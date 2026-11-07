@@ -103,6 +103,28 @@ public class IaTests
     }
 
     [Fact]
+    public void Cost_uses_model_prices_is_zero_for_a_local_model_and_assumes_the_highest_price_when_unknown()
+    {
+        Assert.Equal(24m, Ia.Costo("claude-opus-5-5", false, 1_000_000, 1_000_000));
+        Assert.Equal(0.0024m, Ia.Costo("claude-opus-5-5", false, 100, 100));
+        Assert.Equal(0m, Ia.Costo("qwen2.5:3b-instruct", true, 1_000_000, 1_000_000));
+        Assert.Equal(60m, Ia.Costo("modelo-nuevo", false, 1_000_000, 1_000_000));
+    }
+
+    [Fact]
+    public async Task Monthly_spend_counts_only_this_month_and_is_not_written_to_the_audit_log()
+    {
+        var old = new AgentUsage { RequestId = "a", Model = "m", CostUsd = 100m };
+        db.AgentUsages.AddRange(old, new AgentUsage { RequestId = "b", Model = "m", CostUsd = 1.5m }, new AgentUsage { RequestId = "c", Model = "m", CostUsd = 0.25m });
+        await db.SaveChangesAsync();
+        old.CreatedAt = DateTime.UtcNow.AddMonths(-2);
+        await db.SaveChangesAsync();
+
+        Assert.Equal(1.75m, await Ia.GastoDelMes(db));
+        Assert.Empty(db.AuditEntries);
+    }
+
+    [Fact]
     public void Optional_dates_accept_empty_text_and_reject_invalid_values()
     {
         var options = new JsonSerializerOptions { Converters = { new Ia.FechaOpcional() } };

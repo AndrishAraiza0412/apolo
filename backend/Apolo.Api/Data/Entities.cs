@@ -248,6 +248,21 @@ public class AgentAction : CompanyEntity
     public string? Error { get; set; }
 }
 
+/// Una consulta a Apolo IA: tokens, costo y herramientas usadas. No guarda la pregunta, la respuesta ni los argumentos de las herramientas.
+public class AgentUsage : CompanyEntity
+{
+    public required string RequestId { get; set; }
+    public required string Model { get; set; }
+    /// ok, refusal, max_rounds, limit o error (también si la consulta se interrumpe por una excepción).
+    public string Outcome { get; set; } = "error";
+    public int Rounds { get; set; }
+    public long InputTokens { get; set; }
+    public long OutputTokens { get; set; }
+    public decimal CostUsd { get; set; }
+    public long DurationMs { get; set; }
+    public string Tools { get; set; } = "[]";
+}
+
 public class Project : CompanyEntity
 {
     public static readonly string[] Statuses = ["activo", "pausado", "cerrado"];

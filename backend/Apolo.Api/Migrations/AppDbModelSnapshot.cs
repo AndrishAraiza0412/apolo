@@ -120,6 +120,62 @@ namespace Apolo.Api.Migrations
                     b.ToTable("AgentActions");
                 });
 
+            modelBuilder.Entity("Apolo.Api.Data.AgentUsage", b =>
+                {
+                    b.Property<Guid>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("uuid");
+
+                    b.Property<Guid>("CompanyId")
+                        .HasColumnType("uuid");
+
+                    b.Property<decimal>("CostUsd")
+                        .HasColumnType("numeric");
+
+                    b.Property<DateTime>("CreatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.Property<Guid?>("CreatedBy")
+                        .HasColumnType("uuid");
+
+                    b.Property<long>("DurationMs")
+                        .HasColumnType("bigint");
+
+                    b.Property<long>("InputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<string>("Outcome")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<long>("OutputTokens")
+                        .HasColumnType("bigint");
+
+                    b.Property<string>("RequestId")
+                        .IsRequired()
+                        .HasColumnType("text");
+
+                    b.Property<int>("Rounds")
+                        .HasColumnType("integer");
+
+                    b.Property<string>("Tools")
+                        .IsRequired()
+                        .HasColumnType("jsonb");
+
+                    b.Property<DateTime>("UpdatedAt")
+                        .HasColumnType("timestamp with time zone");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CompanyId", "CreatedAt");
+
+                    b.ToTable("AgentUsages");
+                });
+
             modelBuilder.Entity("Apolo.Api.Data.AuditEntry", b =>
                 {
                     b.Property<Guid>("Id")
@@ -1527,6 +1583,15 @@ namespace Apolo.Api.Migrations
                 });
 
             modelBuilder.Entity("Apolo.Api.Data.AgentAction", b =>
+                {
+                    b.HasOne("Apolo.Api.Data.Company", null)
+                        .WithMany()
+                        .HasForeignKey("CompanyId")
+                        .OnDelete(DeleteBehavior.Restrict)
+                        .IsRequired();
+                });
+
+            modelBuilder.Entity("Apolo.Api.Data.AgentUsage", b =>
                 {
                     b.HasOne("Apolo.Api.Data.Company", null)
                         .WithMany()

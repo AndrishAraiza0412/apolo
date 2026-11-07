@@ -107,6 +107,14 @@ ANTHROPIC_API_KEY=sk-ant-... dotnet run --project Apolo.Api
 
 Without a configured key, the rest of the ERP works the same and the AI screen says it needs to be configured. The agent never writes directly: `crear_factura_borrador` and `crear_oc_borrador` leave a proposal in the task queue, and only a person with permission on the module can turn it into a draft (the audit log records who approved it).
 
+### Usage and spending limit
+
+Each chat request saves one row with its request ID, user, model, outcome, rounds, tokens, cost, duration, and the tools it called with their result and time. The question, the answer and the tool arguments are not stored. The same figures go to the logs, which are JSON with the request ID in production, and every API response returns it in `X-Request-Id`.
+
+- **Limit:** $50 USD per company per month by default; change it with `Anthropic__MonthlyLimitUsd`. At the limit, new questions get a 429 and a running one stops before its next model call. Simultaneous requests can go slightly over it.
+- **Cost:** calculated from the API's token counts and the prices in `Ia.cs`, so it is an estimate, not the invoice. A model without a listed price counts at the highest one. A model reached through `Anthropic__BaseUrl`, such as local Qwen, costs $0 and only its tokens are recorded.
+- **Report:** `GET /api/ia/usage` returns this month's totals and the last 20 requests. It requires the `configuracion` module and has no screen yet.
+
 ### Evaluation
 
 `evals/` tests the agent from the outside with 50 cases, 3 runs each, using the demo users and data. Expected figures come directly from PostgreSQL, not from the agent. Results with the local `qwen2.5:3b-instruct`, same model, cases and scoring rules:

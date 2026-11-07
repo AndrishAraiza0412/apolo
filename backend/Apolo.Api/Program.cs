@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
 // Producción: logs en JSON para enviarlos a un colector (A.8.15). No se registran cuerpos de petición ni contraseñas.
-if (!builder.Environment.IsDevelopment()) builder.Logging.AddJsonConsole();
+if (!builder.Environment.IsDevelopment()) builder.Logging.AddJsonConsole(o => o.IncludeScopes = true); // los scopes traen el RequestId de cada línea
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUser>();
@@ -97,6 +97,7 @@ var csp = $"default-src 'self'; script-src 'self' {Security.InlineScriptHashes(a
 app.Use(async (ctx, next) =>
 {
     var h = ctx.Response.Headers;
+    h["X-Request-Id"] = ctx.TraceIdentifier;
     h["X-Content-Type-Options"] = "nosniff";
     h["X-Frame-Options"] = "DENY";
     h["Referrer-Policy"] = "no-referrer";

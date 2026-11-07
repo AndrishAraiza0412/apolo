@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using System.Security.Claims;
 using System.Text.Json;
@@ -65,6 +66,33 @@ public static class Ia
         filas.MaxBy(f => f.Amount),
         filas.Where(f => f.CierreEsperado is not null).MinBy(f => f.CierreEsperado),
         filas);
+
+    // USD por millón de tokens (entrada, salida), precios de la API de Claude a octubre de 2026. Actualizar si cambian.
+    static readonly Dictionary<string, (decimal Input, decimal Output)> Precios = new()
+    {
+        ["claude-opus-5-5"] = (4m, 20m),
+        ["claude-sonnet-5-5"] = (2m, 10m),
+        ["claude-haiku-5-5"] = (0.10m, 0.50m),
+    };
+    static readonly (decimal Input, decimal Output) PrecioDesconocido = (10m, 50m); // el más alto: un modelo sin precio no debe saltarse el límite
+    const decimal LimiteMensualUsd = 50m;
+
+    /// sin caché de prompts no hay tokens de caché que cobrar, y un respaldo de modelo se cobra al precio del principal; desglosar si se activan.
+    public static decimal Costo(string model, bool local, long input, long output)
+    {
+        if (local) return 0m; // modelo propio con Anthropic:BaseUrl: no hay factura por token
+        var p = Precios.GetValueOrDefault(model, PrecioDesconocido);
+        return (input * p.Input + output * p.Output) / 1_000_000m;
+    }
+
+    static DateTime InicioDelMes() => new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
+
+    /// se revisa antes de cada ronda, así que consultas simultáneas pueden rebasar un poco el límite; usar un contador atómico si importa.
+    public static Task<decimal> GastoDelMes(AppDb db)
+    {
+        var desde = InicioDelMes();
+        return db.AgentUsages.Where(u => u.CreatedAt >= desde).SumAsync(u => u.CostUsd);
+    }
 
     // Qué cubre cada herramienta, para decirle al modelo lo que este rol no puede ver.
     static readonly Dictionary<string, string> Temas = new()
@@ -404,7 +432,27 @@ public static class Ia
             Tools = ToolsFor(user).Select(t => new { t.Name, t.Description, Writes = t.Name.StartsWith("crear_") }),
         });
 
-        g.MapPost("/chat", async (ChatRequest req, AppDb db, ClaimsPrincipal user, IConfiguration config, ILoggerFactory log, CurrentUser me) =>
+        // El consumo del mes y las últimas consultas: solo quien administra la empresa.
+        g.MapGet("/usage", async (AppDb db, IConfiguration config) =>
+        {
+            var desde = InicioDelMes();
+            var mes = db.AgentUsages.Where(u => u.CreatedAt >= desde);
+            return new
+            {
+                LimitUsd = config.GetValue<decimal?>("Anthropic:MonthlyLimitUsd") ?? LimiteMensualUsd,
+                SpentUsd = await mes.SumAsync(u => u.CostUsd),
+                Requests = await mes.CountAsync(),
+                Errors = await mes.CountAsync(u => u.Outcome == "error"),
+                InputTokens = await mes.SumAsync(u => u.InputTokens),
+                OutputTokens = await mes.SumAsync(u => u.OutputTokens),
+                Recent = await db.AgentUsages.OrderByDescending(u => u.CreatedAt).Take(20).Select(u => new
+                {
+                    u.CreatedAt, u.RequestId, u.CreatedBy, u.Model, u.Outcome, u.Rounds, u.InputTokens, u.OutputTokens, u.CostUsd, u.DurationMs, u.Tools,
+                }).ToListAsync(),
+            };
+        }).RequireAuthorization("configuracion");
+
+        g.MapPost("/chat", async (ChatRequest req, AppDb db, ClaimsPrincipal user, IConfiguration config, ILoggerFactory log, CurrentUser me, HttpContext http) =>
         {
             var key = Key(config);
             if (string.IsNullOrWhiteSpace(key))
@@ -412,6 +460,11 @@ public static class Ia
             if (req.Messages is not { Count: > 0 and <= 40 } || req.Messages.Any(m => m.Text is not { Length: > 0 and <= 4000 } || m.Role is not ("user" or "assistant"))
                 || req.Messages[0].Role != "user" || req.Messages[^1].Role != "user")
                 return Results.Problem("Conversación inválida.", statusCode: 400);
+
+            var limit = config.GetValue<decimal?>("Anthropic:MonthlyLimitUsd") ?? LimiteMensualUsd;
+            var spent = await GastoDelMes(db);
+            if (spent >= limit)
+                return Results.Problem("Apolo IA alcanzó el límite de gasto de este mes. Pide a quien administra el sistema que lo revise.", statusCode: 429);
 
             var tools = ToolsFor(user).ToList();
             var company = await db.Companies.IgnoreQueryFilters().Where(c => c.Id == me.CompanyId).Select(c => c.Name).SingleAsync();
@@ -436,12 +489,21 @@ public static class Ia
             var consulted = new List<object>();
             var client = Client(config, key);
             var model = config["Anthropic:Model"] is { Length: > 0 } m ? m : ModelId;
+            var local = config["Anthropic:BaseUrl"] is { Length: > 0 };
+            var usage = new AgentUsage { RequestId = http.TraceIdentifier, Model = model };
+            var started = Stopwatch.GetTimestamp();
 
             try
             {
                 // tope de 8 rondas de herramientas por mensaje; subir si las preguntas reales lo necesitan.
                 for (var round = 0; round < 8; round++)
                 {
+                    if (round > 0 && spent + usage.CostUsd >= limit)
+                    {
+                        usage.Outcome = "limit";
+                        return Results.Ok(new { Reply = "Apolo IA alcanzó el límite de gasto de este mes antes de terminar esta consulta.", Consulted = consulted });
+                    }
+
                     var response = await RetryEmpty(async () =>
                     {
                         var r = await client.Beta.Messages.Create(new MessageCreateParams
@@ -469,8 +531,16 @@ public static class Ia
                         return r;
                     });
 
+                    usage.Rounds++;
+                    usage.InputTokens += response.Usage.InputTokens;
+                    usage.OutputTokens += response.Usage.OutputTokens;
+                    usage.CostUsd = Costo(model, local, usage.InputTokens, usage.OutputTokens);
+
                     if (response.StopReason == "refusal")
+                    {
+                        usage.Outcome = "refusal";
                         return Results.Ok(new { Reply = "No puedo ayudar con esa solicitud.", Consulted = consulted });
+                    }
 
                     var assistant = new List<BetaContentBlockParam>();
                     var results = new List<BetaContentBlockParam>();
@@ -485,6 +555,7 @@ public static class Ia
                             assistant.Add(new BetaToolUseBlockParam { ID = tu.ID, Name = tu.Name, Input = tu.Input });
                             var tool = tools.FirstOrDefault(x => x.Name == tu.Name);
                             string content; bool error = false;
+                            var toolStarted = Stopwatch.GetTimestamp();
                             try
                             {
                                 if (tool is null) throw new ToolError("Herramienta no permitida para este rol.");
@@ -494,16 +565,20 @@ public static class Ia
                             {
                                 content = ex.Message; error = true;
                             }
-                            consulted.Add(new { Tool = tu.Name, Ok = !error });
+                            consulted.Add(new { Tool = tu.Name, Ok = !error, Ms = (long)Stopwatch.GetElapsedTime(toolStarted).TotalMilliseconds });
                             results.Add(new BetaToolResultBlockParam { ToolUseID = tu.ID, Content = content, IsError = error });
                         }
                     }
 
                     if (response.StopReason != "tool_use")
+                    {
+                        usage.Outcome = "ok";
                         return Results.Ok(new { Reply = text.Trim(), Consulted = consulted });
+                    }
                     messages.Add(new BetaAssistantMessageParam { Content = assistant });
                     messages.Add(new BetaUserMessageParam { Content = results });
                 }
+                usage.Outcome = "max_rounds";
                 return Results.Ok(new { Reply = "La consulta necesitó demasiados pasos. Intenta una pregunta más concreta.", Consulted = consulted });
             }
             catch (AnthropicRateLimitException)
@@ -520,6 +595,24 @@ public static class Ia
             {
                 log.CreateLogger("Ia").LogError(ex, "Sin conexión con el modelo");
                 return Results.Problem("No se pudo conectar con el modelo de Apolo IA.", statusCode: 503);
+            }
+            finally
+            {
+                usage.DurationMs = (long)Stopwatch.GetElapsedTime(started).TotalMilliseconds;
+                usage.Tools = JsonSerializer.Serialize(consulted, Json);
+                var logger = log.CreateLogger("Ia");
+                logger.LogInformation("Apolo IA {Outcome}: {Model}, {Rounds} rondas, {InputTokens}+{OutputTokens} tokens, {CostUsd} USD, {DurationMs} ms",
+                    usage.Outcome, model, usage.Rounds, usage.InputTokens, usage.OutputTokens, usage.CostUsd, usage.DurationMs);
+                // Un fallo al registrar no debe cambiar la respuesta que el usuario ya tiene.
+                try
+                {
+                    db.AgentUsages.Add(usage);
+                    await db.SaveChangesAsync();
+                }
+                catch (Exception ex) when (ex is DbUpdateException or InvalidOperationException)
+                {
+                    logger.LogError(ex, "No se pudo registrar el consumo de Apolo IA");
+                }
             }
         });
 

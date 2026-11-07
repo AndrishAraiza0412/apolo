@@ -22,6 +22,7 @@ public class AppDb(DbContextOptions<AppDb> options, CurrentUser? user = null) : 
     public DbSet<PurchaseOrder> PurchaseOrders => Set<PurchaseOrder>();
     public DbSet<PurchaseLine> PurchaseLines => Set<PurchaseLine>();
     public DbSet<AgentAction> AgentActions => Set<AgentAction>();
+    public DbSet<AgentUsage> AgentUsages => Set<AgentUsage>();
     public DbSet<BackgroundJob> BackgroundJobs => Set<BackgroundJob>();
     public DbSet<BankTransaction> BankTransactions => Set<BankTransaction>();
     public DbSet<PaymentReceipt> PaymentReceipts => Set<PaymentReceipt>();
@@ -49,6 +50,9 @@ public class AppDb(DbContextOptions<AppDb> options, CurrentUser? user = null) : 
         b.Entity<User>().HasIndex(u => u.Email).IsUnique();
         b.Entity<AuditEntry>().Property(a => a.Changes).HasColumnType("jsonb");
         b.Entity<AuditEntry>().HasIndex(a => new { a.CompanyId, a.CreatedAt });
+        Tenant<AgentUsage>(b);
+        b.Entity<AgentUsage>().Property(u => u.Tools).HasColumnType("jsonb");
+        b.Entity<AgentUsage>().HasIndex(u => new { u.CompanyId, u.CreatedAt });
 
         b.Entity<Product>().HasIndex(p => new { p.CompanyId, p.Sku }).IsUnique();
         b.Entity<Product>().Property(p => p.Cost).HasPrecision(18, 2);
@@ -208,7 +212,7 @@ b.Entity<PurchaseOrder>().HasIndex(o => new { o.CompanyId, o.Folio }).IsUnique()
             }
             if (e.State != EntityState.Deleted) e.Entity.UpdatedAt = now;
 
-            if (e.Entity is AuditEntry or BackgroundJob) continue; // el avance de una tarea no es un cambio de negocio
+            if (e.Entity is AuditEntry or BackgroundJob or AgentUsage) continue; // el avance de una tarea o el consumo de IA no son cambios de negocio
             var changes = e.State == EntityState.Deleted ? null : JsonSerializer.Serialize(
                 e.Properties
                     .Where(p => e.State == EntityState.Added || p.IsModified)

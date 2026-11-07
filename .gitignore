@@ -6,6 +6,7 @@ node_modules/
 dist/
 .DS_Store
 .claude/
+.omc/
 .env
 # Cookies de sesión de pruebas con curl
 backend/Apolo.Api/cjp

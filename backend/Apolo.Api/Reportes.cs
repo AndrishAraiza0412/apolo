@@ -93,6 +93,9 @@ public static class Reportes
     /// Para Apolo IA: los reportes que el rol puede generar.
     public static IEnumerable<(string Code, string Name)> Available(ClaimsPrincipal user) => For(user).Select(r => (r.Code, r.Name));
 
+    /// Para Apolo IA: los reportes que el rol no puede generar.
+    public static IEnumerable<string> Unavailable(ClaimsPrincipal user) => All.Except(For(user)).Select(r => r.Name);
+
     public static async Task<Table?> RunAsync(AppDb db, ClaimsPrincipal user, string code, DateOnly? from, DateOnly? to)
     {
         var r = For(user).FirstOrDefault(x => x.Code == code);

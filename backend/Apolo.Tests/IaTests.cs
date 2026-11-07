@@ -1,4 +1,5 @@
 using System.Text.Json;
+using Anthropic.Exceptions;
 using Apolo.Api;
 using Apolo.Api.Data;
 using Microsoft.EntityFrameworkCore;
@@ -55,5 +56,62 @@ public class IaTests
         Assert.NotNull(await Ia.DecideAsync(db, a, true, Guid.NewGuid()));
         Assert.Equal("pendiente", a.Status);
         Assert.Empty(db.Invoices);
+    }
+
+    [Fact]
+    public void Cartera_totals_count_only_overdue_rows_as_overdue_and_cover_rows_beyond_the_list_limit()
+    {
+        var filas = Enumerable.Range(0, 60).Select(i => new Ia.FilaCartera($"F-{i}", "Al corriente", 10m, null, 0)).ToList();
+        filas.Insert(0, new("V-1", "Atrasado", 100m, new DateOnly(2026, 1, 1), 5));
+        filas.Insert(1, new("V-2", "Atrasado", 50m, new DateOnly(2026, 1, 2), 4));
+
+        var r = Ia.ResumirCartera(filas);
+
+        Assert.Equal((750m, 150m), (r.TotalPorCobrar, r.TotalVencido));
+        Assert.Equal(["Atrasado"], r.ClientesConVencidas);
+        Assert.Equal(50, r.Facturas.Count);
+    }
+
+    [Fact]
+    public void Pipeline_summary_finds_total_largest_and_nearest_close_ignoring_missing_dates()
+    {
+        var r = Ia.ResumirPipeline(
+        [
+            new("Sin fecha", 900m, "prospecto", null, "A"),
+            new("Tarde", 100m, "propuesta", new DateOnly(2026, 12, 1), "B"),
+            new("Pronto", 200m, "negociacion", new DateOnly(2026, 11, 20), "C"),
+        ]);
+
+        Assert.Equal((1200m, 3, "Sin fecha", "Pronto"), (r.Total, r.Cantidad, r.MayorMonto!.Title, r.CierreMasProximo!.Title));
+        Assert.Null(Ia.ResumirPipeline([]).MayorMonto);
+    }
+
+    [Fact]
+    public async Task RetryEmpty_repeats_only_empty_replies_and_gives_up_after_the_limit()
+    {
+        var calls = 0;
+        Assert.Equal("ok", await Ia.RetryEmpty<string>(() => ++calls < 3 ? throw new AnthropicInvalidDataException("vacío") : Task.FromResult("ok")));
+        Assert.Equal(3, calls);
+
+        calls = 0;
+        await Assert.ThrowsAsync<AnthropicInvalidDataException>(() => Ia.RetryEmpty<string>(() => { calls++; throw new AnthropicInvalidDataException("vacío"); }));
+        Assert.Equal(3, calls);
+
+        calls = 0;
+        await Assert.ThrowsAsync<InvalidOperationException>(() => Ia.RetryEmpty<string>(() => { calls++; throw new InvalidOperationException(); }));
+        Assert.Equal(1, calls);
+    }
+
+    [Fact]
+    public void Optional_dates_accept_empty_text_and_reject_invalid_values()
+    {
+        var options = new JsonSerializerOptions { Converters = { new Ia.FechaOpcional() } };
+
+        Assert.Null(JsonSerializer.Deserialize<DateOnly?>("\"\"", options));
+        Assert.Null(JsonSerializer.Deserialize<DateOnly?>("null", options));
+        Assert.Equal(new DateOnly(2026, 11, 7), JsonSerializer.Deserialize<DateOnly?>("\"2026-11-07\"", options));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<DateOnly?>("\"ayer\"", options));
+        Assert.Throws<JsonException>(() => JsonSerializer.Deserialize<DateOnly?>("5", options));
+        Assert.Equal("\"2026-11-07\"", JsonSerializer.Serialize<DateOnly?>(new DateOnly(2026, 11, 7), options));
     }
 }

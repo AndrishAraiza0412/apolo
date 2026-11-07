@@ -6,6 +6,42 @@ Multi-module ERP for Mexican businesses with an integrated AI agent, **Apolo IA*
 
 Design and scope: [DESIGN.md](DESIGN.md). Stack: ASP.NET Core 10 + EF Core + PostgreSQL, React + Vite.
 
+## Architecture
+
+```mermaid
+flowchart LR
+    Browser["React + Vite interface"]
+    Claude["LLM: local Qwen (Ollama) or Claude API"]
+    Db[("PostgreSQL")]
+
+    subgraph Api["ASP.NET Core API"]
+        Auth["Session cookie and per-module permissions"]
+        Modules["ERP modules"]
+        Agent["Apolo IA: tools filtered by role"]
+        Queue["Proposal queue"]
+        Worker["Background jobs"]
+        Data["EF Core: company filters and audit log"]
+    end
+
+    Browser -->|"/api"| Auth
+    Auth --> Modules
+    Auth --> Agent
+    Agent <-->|"messages and tool calls"| Claude
+    Agent -->|"reads and queues jobs"| Modules
+    Agent -->|"proposes a draft"| Queue
+    Auth -->|"a person approves or rejects"| Queue
+    Queue -->|"creates the draft on approval"| Modules
+    Auth -->|"requests a job"| Worker
+    Modules --> Data
+    Queue --> Data
+    Worker --> Data
+    Data --> Db
+```
+
+- **Permissions live on the server.** Each module has its own authorization policy; the menu only reflects them. The agent gets only the tools the user's role allows.
+- **The agent proposes, a person decides.** Approving a proposal requires permission on the module it affects, runs the module's own validations and records who approved it.
+- **One data layer.** EF Core separates data by company and writes the audit log when changes are saved, so modules don't repeat that logic.
+
 ## Running locally
 
 ```sh
@@ -60,13 +96,16 @@ cd backend && dotnet ef migrations add <Nombre> --project Apolo.Api
 
 ## Apolo IA
 
-The chat uses Claude (`claude-opus-5-5`) with tools filtered by the user's role. To enable it, start the API with the key in the environment:
+The chat uses an LLM with tools filtered by the user's role.
+
+- **Development (default):** the local model `qwen2.5:3b-instruct` through [Ollama](https://ollama.com), so nothing leaves your machine and no key is needed: `ollama pull qwen2.5:3b-instruct`. Settings are in `appsettings.Development.json`. If Ollama is not running, the chat reports that it cannot connect and the rest of the ERP keeps working. A small local model is slower and less reliable than Claude, so check its answers.
+- **Production:** Claude (`claude-opus-5-5`), with the key in the environment:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... dotnet run --project Apolo.Api
 ```
 
-Without the key, the rest of the ERP works the same and the AI screen says it needs to be configured. The agent never writes directly: `crear_factura_borrador` and `crear_oc_borrador` leave a proposal in the task queue, and only a person with permission on the module can turn it into a draft (the audit log records who approved it).
+Without a configured key, the rest of the ERP works the same and the AI screen says it needs to be configured. The agent never writes directly: `crear_factura_borrador` and `crear_oc_borrador` leave a proposal in the task queue, and only a person with permission on the module can turn it into a draft (the audit log records who approved it).
 
 ## Accounting
 

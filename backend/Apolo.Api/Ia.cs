@@ -38,6 +38,10 @@ public static class Ia
 
     static readonly CultureInfo Mx = CultureInfo.GetCultureInfo("es-MX");
     static string? Key(IConfiguration c) => c["Anthropic:ApiKey"] is { Length: > 0 } k ? k : Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
+    // En desarrollo apunta a un modelo local: Ollama acepta el mismo formato de mensajes e ignora los campos propios de Claude.
+    static AnthropicClient Client(IConfiguration c, string key) => c["Anthropic:BaseUrl"] is { Length: > 0 } url
+        ? new AnthropicClient { ApiKey = key, BaseUrl = url }
+        : new AnthropicClient { ApiKey = key };
 
     static T Args<T>(JsonElement input) => input.Deserialize<T>(Json) ?? throw new ToolError("Parámetros inválidos.");
 
@@ -362,7 +366,8 @@ public static class Ia
                 ? (BetaMessageParam)new BetaUserMessageParam { Content = m.Text }
                 : new BetaAssistantMessageParam { Content = m.Text }).ToList();
             var consulted = new List<object>();
-            var client = new AnthropicClient { ApiKey = key };
+            var client = Client(config, key);
+            var model = config["Anthropic:Model"] is { Length: > 0 } m ? m : ModelId;
 
             try
             {
@@ -371,7 +376,7 @@ public static class Ia
                 {
                     var response = await client.Beta.Messages.Create(new MessageCreateParams
                     {
-                        Model = ModelId,
+                        Model = model,
                         MaxTokens = 16000,
                         System = system,
                         OutputConfig = new BetaOutputConfig { Effort = Effort.Medium },
@@ -432,10 +437,16 @@ public static class Ia
             {
                 return Results.Problem("Apolo IA está saturado. Intenta en un minuto.", statusCode: 429);
             }
-            catch (AnthropicApiException ex)
+            // InvalidData: un modelo local puede responder sin contenido (content: null).
+            catch (Exception ex) when (ex is AnthropicApiException or AnthropicInvalidDataException)
             {
-                log.CreateLogger("Ia").LogError(ex, "Error de la API de Claude");
+                log.CreateLogger("Ia").LogError(ex, "Error de la API del modelo");
                 return Results.Problem("Apolo IA no respondió. Intenta de nuevo.", statusCode: 502);
+            }
+            catch (AnthropicIOException ex)
+            {
+                log.CreateLogger("Ia").LogError(ex, "Sin conexión con el modelo");
+                return Results.Problem("No se pudo conectar con el modelo de Apolo IA.", statusCode: 503);
             }
         });
 

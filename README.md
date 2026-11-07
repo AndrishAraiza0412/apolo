@@ -2,47 +2,49 @@
 
 [![CI](https://github.com/AndrishAraiza0412/apolo/actions/workflows/ci.yml/badge.svg)](https://github.com/AndrishAraiza0412/apolo/actions/workflows/ci.yml)
 
-Diseño y alcance: [DESIGN.md](DESIGN.md). Stack: ASP.NET Core 10 + EF Core + PostgreSQL, React + Vite.
+Multi-module ERP for Mexican businesses with an integrated AI agent, **Apolo IA**. The interface is in Spanish (Mexico), so screen names below are given in Spanish.
 
-## Correr en local
+Design and scope: [DESIGN.md](DESIGN.md). Stack: ASP.NET Core 10 + EF Core + PostgreSQL, React + Vite.
+
+## Running locally
 
 ```sh
-docker compose up -d                     # Postgres 17 en :15432 (apolo/apolo)
+docker compose up -d                     # Postgres 17 on :15432 (apolo/apolo)
 cd backend
 dotnet tool restore
-dotnet run --project Apolo.Api           # http://localhost:5080 — en Development aplica migraciones y siembra datos demo
-cd ../frontend && npm install && npm run dev   # http://localhost:5173 (proxy /api → :5080)
+dotnet run --project Apolo.Api           # http://localhost:5080 — in Development, applies migrations and seeds demo data
+cd ../frontend && npm install && npm run dev   # http://localhost:5173 (proxies /api → :5080)
 ```
 
-Usuarios demo (contraseña `apolo1234`): `gerencia@`, `ventas@`, `almacen@`, `finanzas@apolo.test`. Acceso rápido: `admin` / `admin` (Gerencia). Todo esto solo existe en Development.
+Demo users (password `apolo1234`): `gerencia@`, `ventas@`, `almacen@`, `finanzas@apolo.test`. Quick access: `admin` / `admin` (Gerencia, the management role). All of this exists only in Development.
 
-Si no tienes .NET 10 global: `.dotnet/dotnet` (instalación local, ignorada por git).
+If you don't have .NET 10 installed globally: `.dotnet/dotnet` (local install, ignored by git).
 
-## Producción
+## Production
 
-Imagen única (`Dockerfile`): la API sirve también la interfaz. En `deploy/` hay un compose con Postgres, la API, Caddy (HTTPS automático con Let's Encrypt) y un respaldo diario.
+Single image (`Dockerfile`): the API also serves the interface. `deploy/` has a compose file with Postgres, the API, Caddy (automatic HTTPS with Let's Encrypt) and a daily backup.
 
-1. En un servidor con Docker, con el DNS del dominio apuntando a él: `cd deploy && cp .env.example .env`.
-2. Llena `.env`: `DOMAIN`, `DB_PASSWORD` y `SETUP_TOKEN` (`openssl rand -base64 32`). `ANTHROPIC_API_KEY` es opcional y habilita Apolo IA.
-3. Arranca con `docker compose up -d --build`. Las migraciones se aplican al arrancar.
-4. Abre `https://DOMAIN`. La primera vez pide el token de instalación y da de alta la empresa y su usuario administrador (rol Gerencia, contraseña de 12+ caracteres con letras y números). Ya con una empresa, el alta queda cerrada.
-5. Captura los datos fiscales, la prima de riesgo, los parámetros de nómina y el coeficiente de utilidad en Configuración, RRHH › Parámetros y Contabilidad › SAT y cierre. Después da de alta a los usuarios.
+1. On a server with Docker, with the domain's DNS pointing to it: `cd deploy && cp .env.example .env`.
+2. Fill in `.env`: `DOMAIN`, `DB_PASSWORD` and `SETUP_TOKEN` (`openssl rand -base64 32`). `ANTHROPIC_API_KEY` is optional and enables Apolo IA.
+3. Start with `docker compose up -d --build`. Migrations are applied at startup.
+4. Open `https://DOMAIN`. The first time, it asks for the setup token and creates the company and its administrator user (Gerencia role, password of 12+ characters with letters and numbers). Once a company exists, sign-up is closed.
+5. Enter the tax details, the risk premium, the payroll parameters and the profit coefficient in Configuración, RRHH › Parámetros and Contabilidad › SAT y cierre. Then create the users.
 
-- En producción no hay datos demo ni usuario `admin/admin`; esos solo existen con `ASPNETCORE_ENVIRONMENT=Development`.
-- La base no publica puertos. La cookie de sesión es `Secure`, `HttpOnly` y `SameSite=Strict`, y lleva HSTS. Las llaves que la cifran viven en el volumen `keys`.
-- **Respaldos.** Diario, en `deploy/backups/apolo-AAAAMMDD-HHMMSS.dump`, conservando 30 días (`BACKUP_KEEP_DAYS`). Copia esa carpeta fuera del servidor (S3, otro disco). Para restaurar:
+- Production has no demo data and no `admin/admin` user; those exist only with `ASPNETCORE_ENVIRONMENT=Development`.
+- The database publishes no ports. The session cookie is `Secure`, `HttpOnly` and `SameSite=Strict`, with HSTS. The keys that encrypt it live in the `keys` volume.
+- **Backups.** Daily, in `deploy/backups/apolo-AAAAMMDD-HHMMSS.dump`, kept for 30 days (`BACKUP_KEEP_DAYS`). Copy that folder off the server (S3, another disk). To restore:
   `docker compose stop api && docker compose exec -T db pg_restore -U apolo -d apolo --clean --if-exists < backups/ARCHIVO.dump && docker compose start api`.
-- **Actualizar:** `git pull && docker compose up -d --build`. Respalda antes: las migraciones son automáticas.
-- **Seguridad** (detalle y mapeo ISO 27001 / SOC 2 en [docs/seguridad.md](docs/seguridad.md)):
-  - Bloqueo de 15 minutos tras 5 intentos fallidos.
-  - Contraseñas de 12+ caracteres con letras y números.
-  - Las sesiones se revocan al cambiar la contraseña, el rol o al desactivar al usuario.
-  - CSP y encabezados de seguridad.
-  - Límite de 600 peticiones por minuto.
-  - Bitácora de accesos.
-  - `/healthz` para monitoreo.
-  - Antes de cada versión corre `scripts/security-check.sh`.
-- Para una sola instancia. Con varias, las migraciones y las tareas en segundo plano tienen que correr en un solo proceso.
+- **Updating:** `git pull && docker compose up -d --build`. Back up first: migrations are automatic.
+- **Security** (details and ISO 27001 / SOC 2 mapping in [docs/seguridad.md](docs/seguridad.md)):
+  - 15-minute lockout after 5 failed attempts.
+  - Passwords of 12+ characters with letters and numbers.
+  - Sessions are revoked when the password or role changes, or when the user is deactivated.
+  - CSP and security headers.
+  - Limit of 600 requests per minute.
+  - Access log.
+  - `/healthz` for monitoring.
+  - `scripts/security-check.sh` runs before each release.
+- Built for a single instance. With several, migrations and background jobs must run in a single process.
 
 ## Tests
 
@@ -50,7 +52,7 @@ Imagen única (`Dockerfile`): la API sirve también la interfaz. En `deploy/` ha
 cd backend && dotnet test
 ```
 
-## Nueva migración
+## New migration
 
 ```sh
 cd backend && dotnet ef migrations add <Nombre> --project Apolo.Api
@@ -58,62 +60,62 @@ cd backend && dotnet ef migrations add <Nombre> --project Apolo.Api
 
 ## Apolo IA
 
-El chat usa Claude (`claude-opus-5-5`) con herramientas filtradas por el rol del usuario. Para activarlo, arranca la API con la clave en el entorno:
+The chat uses Claude (`claude-opus-5-5`) with tools filtered by the user's role. To enable it, start the API with the key in the environment:
 
 ```bash
 ANTHROPIC_API_KEY=sk-ant-... dotnet run --project Apolo.Api
 ```
 
-Sin la clave, el resto del ERP funciona igual y la pantalla de IA avisa que falta configurarla. El agente nunca escribe directo: `crear_factura_borrador` y `crear_oc_borrador` dejan una propuesta en la cola de tareas, y solo una persona con permiso sobre el módulo la convierte en borrador (queda en la bitácora quién aprobó).
+Without the key, the rest of the ERP works the same and the AI screen says it needs to be configured. The agent never writes directly: `crear_factura_borrador` and `crear_oc_borrador` leave a proposal in the task queue, and only a person with permission on the module can turn it into a draft (the audit log records who approved it).
 
-## Contabilidad
+## Accounting
 
-Cada operación genera su póliza en la misma transacción: factura emitida (clientes / ventas / IVA trasladado / costo de ventas), cobro, cancelación (póliza de reversa), compra recibida, pago a proveedor y nómina pagada. Las pólizas son inmutables; una póliza manual se corrige con su reversa. El catálogo base (101–605) se crea solo la primera vez. Las fechas de póliza son el día local del servidor.
+Each operation generates its journal entry (*póliza*) in the same transaction: issued invoice (customers / sales / VAT charged / cost of sales), collection, cancellation (reversing entry), received purchase, supplier payment and paid payroll. Journal entries are immutable; a manual entry is corrected with its reversal. The base chart of accounts (101–605) is created automatically the first time. Entry dates use the server's local day.
 
-- **Impuestos y cuotas** (Contabilidad › Impuestos y cuotas): saldos por enterar de retenciones (213), cuotas IMSS/RCV/INFONAVIT (214), IVA e ISR provisional. Retenciones y cuotas admiten pagos parciales. El IVA se compensa primero con el IVA que retuvieron los clientes (120) y luego con el acreditable (118). El IVA se toma devengado; la declaración del SAT va sobre flujo de efectivo.
-- **ISR provisional (personas morales).** Ingresos acumulados × coeficiente de utilidad × 30%, menos los pagos provisionales del año (117) y el ISR que retuvieron los clientes (119). El coeficiente se captura en Contabilidad › SAT y cierre. Personas físicas y RESICO no se calculan.
-- **Contabilidad electrónica.** Desde SAT y cierre se descargan el catálogo y la balanza del mes en XML (Anexo 24, versión 1.3), sin sellar. Cada cuenta con movimientos necesita su código agrupador: las del catálogo base lo traen y las demás se capturan en el catálogo de cuentas.
-- **Cierre del ejercicio.** La póliza de cierre lleva ingresos y gastos a 305 Resultado del ejercicio y bloquea el periodo. No se acepta ninguna póliza con fecha igual o anterior al cierre (422). Solo se reabre el último ejercicio cerrado.
-- **Proveedores.** Las órdenes recibidas aceptan abonos; la orden pasa a pagada cuando el saldo llega a cero.
+- **Taxes and contributions** (Contabilidad › Impuestos y cuotas): balances payable for withholdings (213), IMSS/RCV/INFONAVIT contributions (214), VAT and provisional income tax (ISR). Withholdings and contributions accept partial payments. VAT is offset first against VAT withheld by customers (120) and then against creditable VAT (118). VAT is taken on an accrual basis; the SAT return goes on a cash-flow basis.
+- **Provisional ISR (legal entities).** Accumulated income × profit coefficient × 30%, minus the year's provisional payments (117) and ISR withheld by customers (119). The coefficient is entered in Contabilidad › SAT y cierre. Individuals and RESICO are not calculated.
+- **Electronic accounting.** SAT y cierre downloads the chart of accounts and the month's trial balance as XML (Annex 24, version 1.3), unsealed. Each account with movements needs its grouping code: base-chart accounts include it and others are entered in the chart of accounts.
+- **Fiscal year close.** The closing entry moves income and expenses to 305 Resultado del ejercicio and locks the period. No entry dated on or before the close is accepted (422). Only the last closed year can be reopened.
+- **Suppliers.** Received orders accept partial payments; an order becomes paid when its balance reaches zero.
 
-## Pronósticos y tareas en segundo plano
+## Forecasting and background jobs
 
-- **Demanda** (`/api/forecast/demand`): promedio exponencial (α = 0.1) de las salidas de 90 días. Da días para llegar al mínimo y para agotarse, y una cantidad sugerida que cubre 30 días más el mínimo. Se ve en el detalle de Inventario y alimenta "Sugerir por pronóstico" en Compras.
-- **Caja** (`/api/forecast/cash`): saldo de caja y bancos al cierre de los próximos 3 meses. Suma la cobranza al vencimiento, los pagos a proveedores, la nómina promedio y los promedios recientes de gastos y ventas. Los supuestos se muestran en Contabilidad › Pronóstico de caja; el Dashboard dibuja la proyección como línea punteada.
-- **Tareas** (`/api/jobs`): la conciliación contable (7 revisiones) y los reportes corren en un worker dentro de la API. El avance queda guardado en `BackgroundJobs` y la interfaz lo consulta cada segundo mientras la tarea corre. Si la API se reinicia, retoma las tareas pendientes. Apolo IA puede lanzarlas con `tarea_en_segundo_plano`.
-- Con un solo worker en proceso basta para una instancia. Con varias instancias, conviene pasar a una cola externa.
+- **Demand** (`/api/forecast/demand`): exponential average (α = 0.1) of 90 days of outflows. Gives days until reaching the minimum and until running out, plus a suggested quantity covering 30 days plus the minimum. Shown in the Inventario detail and feeds "Sugerir por pronóstico" in Compras.
+- **Cash** (`/api/forecast/cash`): cash and bank balance at the close of the next 3 months. Adds collections on their due dates, supplier payments, average payroll and recent averages of expenses and sales. Assumptions are shown in Contabilidad › Pronóstico de caja; the Dashboard draws the projection as a dotted line.
+- **Jobs** (`/api/jobs`): accounting reconciliation (7 checks) and reports run in a worker inside the API. Progress is saved in `BackgroundJobs` and the interface polls it every second while the job runs. If the API restarts, it resumes pending jobs. Apolo IA can start them with `tarea_en_segundo_plano`.
+- A single in-process worker is enough for one instance. With several instances, move to an external queue.
 
-## Facturación electrónica (CFDI 4.0)
+## Electronic invoicing (CFDI 4.0)
 
-- Con RFC, razón social, régimen y C.P. en Configuración › Empresa, cada factura emitida se timbra como CFDI 4.0 de ingreso. Sin RFC, la factura queda como documento interno.
-- El receptor necesita RFC, régimen fiscal y C.P., que se capturan en el cliente. Con el RFC genérico `XAXX010101000` se factura a público en general.
-- Las facturas a crédito salen como PPD con forma de pago 99; las de contado, como PUE con forma de pago 03.
-- Desde la factura se descarga el XML y se imprime la representación impresa, que lleva el QR de verificación del SAT. La cancelación pide el motivo del SAT (02, 03 o 04).
-- **Sustituir** crea un borrador con el mismo contenido. Al emitirlo, el nuevo CFDI se relaciona con el original (tipo 04) y el original se cancela con motivo 01.
-- Al registrar el cobro de una factura PPD timbrada se emite su recibo electrónico de pago (CFDI tipo P, complemento Pagos 2.0), serie P.
-- Las facturas PPD aceptan **abonos**. Cada abono genera su póliza de ingreso y su recibo de pago, con número de parcialidad, saldo anterior y saldo insoluto. Los impuestos del recibo son proporcionales a lo pagado. La factura pasa a pagada cuando el saldo llega a cero. Una factura con abonos ya no se cancela ni se sustituye. Las PUE se cobran en una sola exhibición.
-- La cartera (tablero, antigüedad de saldos, pronóstico de caja y Apolo IA) usa el saldo pendiente. En Bancos, un depósito menor al saldo se sugiere como abono cuando trae el folio en la descripción o en la referencia.
-- **Notas de crédito** (CFDI tipo E, relación 01) por devolución o descuento. Reducen el saldo de la factura y registran 402 Devoluciones contra clientes e IVA.
-- **Retenciones.** Cuando la empresa es persona física (RFC de 13) en régimen 612/606 (ISR 10%) o 626 RESICO (ISR 1.25%) y factura servicios (partidas sin producto) a una persona moral, el CFDI lleva retención de ISR y de dos terceras partes del IVA. El total ya viene neto y las retenciones se registran en 119/120. Las facturas con retenciones se corrigen sustituyéndolas, no con notas de crédito.
-- **Modo actual: pruebas.** El UUID se genera localmente y los sellos dicen `PRUEBAS`, así que los comprobantes no tienen validez ante el SAT. El timbrado real queda fuera del alcance. Para agregarlo harían falta el CSD de la empresa (.cer/.key) y un PAC, y solo cambiaría `Cfdi.Stamp`.
+- With the RFC (tax ID), legal name, tax regime and postal code in Configuración › Empresa, each issued invoice is stamped as an income CFDI 4.0. Without an RFC, the invoice stays an internal document.
+- The recipient needs an RFC, tax regime and postal code, entered on the customer. The generic RFC `XAXX010101000` invoices the general public.
+- Credit invoices go out as PPD with payment form 99; cash invoices as PUE with payment form 03.
+- The XML can be downloaded from the invoice, and the printed representation carries the SAT verification QR. Cancellation asks for the SAT reason (02, 03 or 04).
+- **Replace** creates a draft with the same content. When issued, the new CFDI is linked to the original (type 04) and the original is canceled with reason 01.
+- Registering the collection of a stamped PPD invoice issues its electronic payment receipt (CFDI type P, Pagos 2.0 complement), series P.
+- PPD invoices accept **partial payments**. Each one generates its income journal entry and payment receipt, with installment number, previous balance and outstanding balance. Taxes on the receipt are proportional to the amount paid. The invoice becomes paid when its balance reaches zero. An invoice with partial payments can no longer be canceled or replaced. PUE invoices are collected in a single payment.
+- Receivables (dashboard, aging, cash forecast and Apolo IA) use the outstanding balance. In Bancos, a deposit smaller than the balance is suggested as a partial payment when its description or reference contains the invoice number.
+- **Credit notes** (CFDI type E, relation 01) for returns or discounts. They reduce the invoice balance and record 402 Devoluciones against customers and VAT.
+- **Withholdings.** When the company is an individual (13-character RFC) under regime 612/606 (ISR 10%) or 626 RESICO (ISR 1.25%) and invoices services (lines without a product) to a legal entity, the CFDI carries withholding of ISR and two thirds of the VAT. The total is already net and withholdings are recorded in 119/120. Invoices with withholdings are corrected by replacing them, not with credit notes.
+- **Current mode: testing.** The UUID is generated locally and the seals read `PRUEBAS`, so the documents have no validity before the SAT. Real stamping is out of scope. Adding it would require the company's CSD (.cer/.key) and a PAC, and would change only `Cfdi.Stamp`.
 
-## Nómina
+## Payroll
 
-- El ISR se calcula con la tarifa mensual del art. 96 ajustada a los días pagados, y se le resta el subsidio para el empleo. Las cuotas obreras del IMSS se calculan sobre el SBC (factor de integración por antigüedad, con tope de 25 UMA).
-- Los parámetros por omisión son los de 2026 (tarifa del Anexo 8 de la RMF 2026, UMA $117.31, subsidio de 15.02% de la UMA mensual hasta $11,492.66). Cada empresa los edita en RRHH › Parámetros: tarifa, UMA, días de aguinaldo, prima vacacional, factores de horas extra, tasas IMSS y tabla de cesantía. No se aceptan valores por debajo de la ley. **Hay que actualizarlos cada enero.**
-- **Horas extra.** Las dobles se pagan al 200% y las triples al 300% de la hora (sueldo diario / 8). Exenta la mitad de las dobles, hasta 5 UMA por semana. En salario mínimo ($315.04) las dobles son exentas completas.
-- **Aguinaldo.** Nómina de tipo aguinaldo: 15 días proporcionales a los días trabajados en el año de la fecha de pago, exento hasta 30 UMA.
-- **PTU.** Nómina de tipo PTU: el monto a repartir se divide 50% por días trabajados y 50% por salarios del año anterior, con tope de tres meses de salario y exento hasta 15 UMA. El ISR de aguinaldo y PTU se calcula sumando la parte gravada al sueldo mensual y tomando la diferencia de la tarifa. No causan cuotas IMSS.
-- **Cuotas patronales.** IMSS: cuota fija, excedente, prestaciones en dinero, pensionados, riesgo de trabajo, invalidez y vida, y guarderías. RCV: retiro 2% más cesantía y vejez con la tabla 2026 por nivel salarial. INFONAVIT 5%. La prima de riesgo de trabajo se captura en Configuración › Empresa; el valor por omisión es 0.54355%, la de clase I.
-- Al pagar la nómina, las cuotas patronales se registran en 603 Cuotas patronales contra 214 IMSS, RCV e INFONAVIT por pagar. La PTU se registra en 604.
-- **Incidencias.** Las faltas y las incapacidades descuentan días de sueldo y de cotización. Las vacaciones pagan prima vacacional (25% por omisión), exenta hasta 15 UMA.
-- En salario mínimo, el patrón absorbe la cuota obrera del IMSS.
-- La PTU incluye a los empleados dados de baja en el año repartido. El tope es el mayor entre tres meses de salario y el promedio de PTU de los últimos tres años.
-- **Finiquito y liquidación.** Incluye salario pendiente, aguinaldo y vacaciones proporcionales y prima vacacional. En despido injustificado suma 3 meses, 20 días por año y prima de antigüedad, que también se paga con 15 años o más. La parte de separación está exenta hasta 90 UMA por año de servicio. Al pagarlo, el empleado queda dado de baja.
-- **Cálculo anual** (RRHH › Cálculo anual). Aplica a empleados con el año completo e ingresos de hasta $400,000. Compara la tarifa anual contra el ISR retenido y aplica la diferencia en una nómina en borrador.
+- ISR is calculated with the monthly rate table of art. 96 adjusted to the days paid, minus the employment subsidy. Employee IMSS contributions are calculated on the SBC (integration factor by seniority, capped at 25 UMA).
+- Default parameters are those of 2026 (rate table from Annex 8 of the RMF 2026, UMA $117.31, subsidy of 15.02% of the monthly UMA up to $11,492.66). Each company edits them in RRHH › Parámetros: rate table, UMA, Christmas bonus days, vacation premium, overtime factors, IMSS rates and the severance-age table. Values below the legal minimum are not accepted. **They must be updated every January.**
+- **Overtime.** Double hours are paid at 200% and triple hours at 300% of the hourly rate (daily salary / 8). Half of double hours are exempt, up to 5 UMA per week. At minimum wage ($315.04), double hours are fully exempt.
+- **Christmas bonus (*aguinaldo*).** Payroll of type aguinaldo: 15 days prorated to days worked in the year of the payment date, exempt up to 30 UMA.
+- **Profit sharing (PTU).** Payroll of type PTU: the amount to distribute is split 50% by days worked and 50% by the previous year's wages, capped at three months' salary and exempt up to 15 UMA. ISR on aguinaldo and PTU is calculated by adding the taxable part to the monthly salary and taking the difference in the rate table. They do not incur IMSS contributions.
+- **Employer contributions.** IMSS: fixed fee, surplus, cash benefits, pensioners, occupational risk, disability and life, and childcare. RCV: 2% retirement plus severance and old age with the 2026 table by wage level. INFONAVIT 5%. The occupational risk premium is entered in Configuración › Empresa; the default is 0.54355%, that of class I.
+- When payroll is paid, employer contributions are recorded in 603 Cuotas patronales against 214 IMSS, RCV and INFONAVIT payable. PTU is recorded in 604.
+- **Incidents.** Absences and sick leave deduct days of salary and contributions. Vacations pay a vacation premium (25% by default), exempt up to 15 UMA.
+- At minimum wage, the employer absorbs the employee's IMSS contribution.
+- PTU includes employees who left during the distributed year. The cap is the greater of three months' salary and the average PTU of the last three years.
+- **Final settlement and severance (*finiquito y liquidación*).** Includes pending salary, prorated aguinaldo and vacations, and vacation premium. On unjustified dismissal it adds 3 months, 20 days per year and seniority premium, which is also paid at 15 or more years. The separation portion is exempt up to 90 UMA per year of service. Once paid, the employee is deactivated.
+- **Annual calculation** (RRHH › Cálculo anual). Applies to employees with the full year and income up to $400,000. Compares the annual rate table against ISR withheld and applies the difference in a draft payroll.
 
-## Bancos
+## Banking
 
-- En Contabilidad › Bancos se importa el estado de cuenta en CSV. Las columnas son Fecha, Descripción, Referencia opcional y Monto, o bien Cargo y Abono.
-- Cada movimiento sugiere el documento con el mismo importe, priorizando el que tenga su folio en la descripción o la referencia: facturas para depósitos, órdenes de compra y nóminas para retiros.
-- Al conciliar, el documento se registra como cobrado o pagado con la fecha del banco y genera su póliza. Los cargos sin documento se pueden registrar como gasto.
+- Contabilidad › Bancos imports the bank statement as CSV. The columns are Fecha, Descripción, optional Referencia and Monto, or Cargo and Abono.
+- Each movement suggests the document with the same amount, prioritizing the one with its number in the description or reference: invoices for deposits, purchase orders and payrolls for withdrawals.
+- On reconciliation, the document is recorded as collected or paid on the bank's date and generates its journal entry. Charges without a document can be recorded as an expense.

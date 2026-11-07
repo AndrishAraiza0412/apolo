@@ -1,0 +1,11 @@
+.dotnet/
+.dotnet-home/
+bin/
+obj/
+node_modules/
+dist/
+.DS_Store
+.claude/
+.env
+# Cookies de sesión de pruebas con curl
+backend/Apolo.Api/cjp

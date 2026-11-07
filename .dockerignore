@@ -1,0 +1,9 @@
+**/bin
+**/obj
+**/node_modules
+**/dist
+.dotnet
+.dotnet-home
+.git
+deploy/.env
+deploy/backups

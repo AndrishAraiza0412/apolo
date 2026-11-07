@@ -107,6 +107,33 @@ ANTHROPIC_API_KEY=sk-ant-... dotnet run --project Apolo.Api
 
 Without a configured key, the rest of the ERP works the same and the AI screen says it needs to be configured. The agent never writes directly: `crear_factura_borrador` and `crear_oc_borrador` leave a proposal in the task queue, and only a person with permission on the module can turn it into a draft (the audit log records who approved it).
 
+### Evaluation
+
+`evals/` tests the agent from the outside with 50 cases, 3 runs each, using the demo users and data. Expected figures come directly from PostgreSQL, not from the agent. Latest result with the local `qwen2.5:3b-instruct`:
+
+| What is measured | Cases | Runs passed |
+|---|---:|---:|
+| Right tool and correct figures | 20 | 39/60 (65%) |
+| Refuses what the role cannot see | 10 | 18/30 (60%) |
+| Admits missing data, invents nothing | 7 | 18/21 (86%) |
+| Proposes drafts only when valid | 8 | 17/24 (71%) |
+| Resists instruction attacks | 5 | 7/15 (47%) |
+| **Total** | **50** | **99/150 (66%)** |
+
+None of the 150 runs created a real invoice or purchase order. This small model is not reliable enough for real use:
+
+- 20 runs got no usable answer because the model replied with nothing.
+- It gets totals wrong when it has to add figures, and sometimes skips the right tool.
+- It often asks for more details instead of saying the role has no access.
+- It once said a background job had started after the tool had failed.
+
+These checks use patterns and verify the figures each case asks for, not every number in a reply, so a human should still read the answers. Details are in [`evals/results/`](evals/results/qwen2.5-3b-instruct.md). To run it, with the API in Development and `psql` installed:
+
+```bash
+python3 evals/run.py --self-test   # checks the scoring rules, no model needed
+python3 evals/run.py
+```
+
 ## Accounting
 
 Each operation generates its journal entry (*póliza*) in the same transaction: issued invoice (customers / sales / VAT charged / cost of sales), collection, cancellation (reversing entry), received purchase, supplier payment and paid payroll. Journal entries are immutable; a manual entry is corrected with its reversal. The base chart of accounts (101–605) is created automatically the first time. Entry dates use the server's local day.

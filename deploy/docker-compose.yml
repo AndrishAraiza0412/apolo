@@ -1,0 +1,62 @@
+# Producción: Postgres + Apolo + Caddy (HTTPS automático con Let's Encrypt) + respaldo diario.
+# Uso: cp .env.example .env, edita los valores y ejecuta `docker compose up -d --build` en esta carpeta.
+services:
+  db:
+    image: postgres:17
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: apolo
+      POSTGRES_USER: apolo
+      POSTGRES_PASSWORD: ${DB_PASSWORD:?Define DB_PASSWORD en .env}
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U apolo -d apolo"]
+      interval: 10s
+      retries: 5
+    # Sin puerto publicado: solo la API llega a la base.
+
+  api:
+    build: ..
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      ConnectionStrings__Default: Host=db;Database=apolo;Username=apolo;Password=${DB_PASSWORD}
+      Setup__Token: ${SETUP_TOKEN:?Define SETUP_TOKEN en .env}
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
+      TZ: America/Mexico_City
+    volumes:
+      - keys:/keys
+
+  caddy:
+    image: caddy:2
+    restart: unless-stopped
+    depends_on: [api]
+    ports: ["80:80", "443:443"]
+    environment:
+      DOMAIN: ${DOMAIN:?Define DOMAIN en .env}
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy:/data
+
+  backup:
+    image: postgres:17
+    restart: unless-stopped
+    depends_on:
+      db: { condition: service_healthy }
+    environment:
+      PGHOST: db
+      PGUSER: apolo
+      PGPASSWORD: ${DB_PASSWORD}
+      KEEP_DAYS: ${BACKUP_KEEP_DAYS:-30}
+      TZ: America/Mexico_City
+    volumes:
+      - ./backups:/backups
+      - ./backup.sh:/backup.sh:ro
+    entrypoint: ["bash", "-c", "while true; do bash /backup.sh; sleep 86400; done"]
+
+volumes:
+  pgdata:
+  keys:
+  caddy:

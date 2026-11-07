@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="Apolo.Api/Apolo.Api.csproj" />
+  <Project Path="Apolo.Tests/Apolo.Tests.csproj" />
+</Solution>

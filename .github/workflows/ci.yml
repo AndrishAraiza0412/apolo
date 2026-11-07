@@ -1,0 +1,43 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - name: Instalar dependencias del frontend
+        run: npm ci
+        working-directory: frontend
+
+      - name: Lint del frontend
+        run: npm run lint
+        working-directory: frontend
+
+      - name: Tipos y build del frontend
+        run: npm run build
+        working-directory: frontend
+
+      # Pruebas .NET, paquetes vulnerables, npm audit y búsqueda de secretos.
+      - name: Revisión de seguridad y pruebas
+        run: bash scripts/security-check.sh

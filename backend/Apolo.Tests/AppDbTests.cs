@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Apolo.Tests;
 
+/// AppDb multi-tenancy: reads are scoped to the user's company, writes are stamped and audited (without secrets), and writing into another company throws.
 public class AppDbTests
 {
     readonly string dbName = Guid.NewGuid().ToString();

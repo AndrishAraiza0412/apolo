@@ -1,4 +1,4 @@
-// Barra con 4px redondeados arriba y base recta sobre el eje.
+// Bar with 4px rounded corners on top and a straight base on the axis.
 export function barPath(x: number, y: number, w: number, h: number) {
   const r = Math.min(4, w / 2, h)
   return `M${x},${y + h}V${y + r}Q${x},${y} ${x + r},${y}H${x + w - r}Q${x + w},${y} ${x + w},${y + r}V${y + h}Z`

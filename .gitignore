@@ -8,5 +8,5 @@ dist/
 .claude/
 .omc/
 .env
-# Cookies de sesión de pruebas con curl
+# Test session cookies from curl
 backend/Apolo.Api/cjp

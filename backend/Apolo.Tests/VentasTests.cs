@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Apolo.Tests;
 
+/// Sales validation: an opportunity rejects a customer from another company and validates its stage and amount.
 public class VentasTests
 {
     readonly string dbName = Guid.NewGuid().ToString();

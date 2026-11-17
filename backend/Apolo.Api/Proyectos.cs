@@ -8,7 +8,7 @@ public record ProjectTaskRequest(string Title, bool Done, DateOnly? DueDate, Gui
 
 public static class Proyectos
 {
-    /// Cliente y responsable se buscan con el filtro de empresa: un id de otra empresa no existe aquí.
+    /// Customer and owner are looked up with the company filter: an id from another company does not exist here.
     public static async Task<Dictionary<string, string[]>> ValidateAsync(AppDb db, ProjectRequest r)
     {
         var e = new Dictionary<string, string[]>();
@@ -60,7 +60,7 @@ public static class Proyectos
                 Done = db.ProjectTasks.Count(t => t.ProjectId == p.Id && t.Done),
             }).ToListAsync());
 
-        // Lo que necesita el formulario. Proyectos no requiere permiso de Ventas ni de Configuración.
+        // What the form needs. Projects does not require the Sales or Settings permission.
         g.MapGet("/catalog", async (AppDb db) => new
         {
             Customers = await db.Customers.Where(c => c.Active).OrderBy(c => c.Name).Select(c => new { c.Id, c.Name }).ToListAsync(),

@@ -200,7 +200,7 @@ type Demand = {
 }
 const day = new Intl.DateTimeFormat('es-MX', { day: 'numeric', month: 'short', timeZone: 'UTC' })
 
-// Existencia proyectada 14 días con la demanda pronosticada; el mínimo es la línea punteada.
+// Stock projected 14 days out with the forecast demand; the minimum is the dotted line.
 function Forecast({ p }: { p: Product }) {
   const [d, setD] = useState<Demand | null>(null)
   const [hover, setHover] = useState<number | null>(null)

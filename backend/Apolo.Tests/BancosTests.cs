@@ -42,7 +42,7 @@ public class BancosTests
         var s = Assert.Single(await Bancos.SuggestAsync(db, deposit));
         Assert.Equal(("factura", inv.Id, false), (s.Kind, s.Id, s.AlreadyPaid));
 
-        Assert.NotNull(await Bancos.MatchAsync(db, Role("contabilidad"), deposit.Id, new("factura", inv.Id))); // sin permiso de facturación
+        Assert.NotNull(await Bancos.MatchAsync(db, Role("contabilidad"), deposit.Id, new("factura", inv.Id))); // without invoicing permission
         Assert.Null(await Bancos.MatchAsync(db, Role("contabilidad", "facturacion"), deposit.Id, new("factura", inv.Id)));
         Assert.Equal(("pagada", new DateOnly(2026, 10, 1)), (inv.Status, DateOnly.FromDateTime(inv.PaidAt!.Value.ToLocalTime())));
         Assert.Equal("conciliado", deposit.Status);

@@ -60,7 +60,7 @@ namespace Apolo.Api.Migrations
                 nullable: false,
                 defaultValue: 0m);
 
-            // Las facturas ya pagadas quedan saldadas y los recibos existentes son su única parcialidad.
+            // Invoices that were already paid are settled and the existing receipts are their only installment.
             migrationBuilder.Sql("UPDATE \"Invoices\" SET \"Paid\" = \"Total\" WHERE \"Status\" = 'pagada';");
             migrationBuilder.Sql("UPDATE \"PaymentReceipts\" SET \"Installment\" = 1, \"BalanceBefore\" = \"Amount\";");
         }

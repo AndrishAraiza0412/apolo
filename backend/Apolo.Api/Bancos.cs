@@ -8,8 +8,8 @@ namespace Apolo.Api;
 public record BankImportRequest(string Csv);
 public record BankMatchRequest(string Kind, Guid Id);
 
-/// Conciliación bancaria (DESIGN.md §12): se importa el estado de cuenta en CSV y cada movimiento se liga a un cobro o pago.
-// importación manual de CSV; la conexión directa con el banco (API o SFTP) reemplaza solo ImportAsync.
+/// Bank reconciliation (DESIGN.md §12): the bank statement is imported as CSV and each movement is linked to a collection or a payment.
+// manual CSV import; a direct bank connection (API or SFTP) only replaces ImportAsync.
 public static class Bancos
 {
     public record Row(DateOnly Date, string Description, string? Reference, decimal Amount);
@@ -17,7 +17,7 @@ public static class Bancos
 
     static readonly Dictionary<string, string> KindModule = new() { ["factura"] = "facturacion", ["compra"] = "compras", ["nomina"] = "rrhh" };
 
-    /// Campos separados por coma con comillas opcionales ("1,234.50").
+    /// Comma-separated fields with optional quotes ("1,234.50").
     static List<string> Split(string line)
     {
         var fields = new List<string>();
@@ -43,7 +43,7 @@ public static class Bancos
 
     static readonly string[] DateFormats = ["dd/MM/yyyy", "d/M/yyyy", "yyyy-MM-dd", "dd-MM-yyyy"];
 
-    /// Encabezados aceptados: fecha, descripción/concepto, referencia (opcional) y monto, o bien cargo/retiro y abono/depósito.
+    /// Accepted headers: date, description/concept, reference (optional) and amount, or else charge/withdrawal and credit/deposit.
     public static (List<Row> Rows, List<string> Errors) Parse(string csv)
     {
         var lines = csv.Replace("\r", "").Split('\n').Where(l => l.Trim().Length > 0).ToList();
@@ -71,7 +71,7 @@ public static class Bancos
         return (rows, errors);
     }
 
-    /// Guarda los movimientos nuevos; uno con la misma fecha, monto y descripción ya importado se omite.
+    /// Saves the new movements; one with the same date, amount and description that was already imported is skipped.
     public static async Task<(int Added, int Skipped, List<string> Errors)> ImportAsync(AppDb db, string csv)
     {
         var (rows, errors) = Parse(csv);
@@ -88,7 +88,7 @@ public static class Bancos
         return (added, rows.Count - added, errors);
     }
 
-    /// Mismo importe: depósitos contra facturas, retiros contra órdenes de compra y nóminas. El folio en la descripción o referencia va primero.
+    /// Same amount: deposits against invoices, withdrawals against purchase orders and payroll runs. The folio (document number) in the description or reference goes first.
     public static async Task<List<Suggestion>> SuggestAsync(AppDb db, BankTransaction t)
     {
         var linked = await db.BankTransactions.Where(x => x.MatchId != null).Select(x => x.MatchId!.Value).ToListAsync();
@@ -96,7 +96,7 @@ public static class Bancos
         var list = new List<Suggestion>();
         if (t.Amount > 0)
         {
-            // Por cobrar: el saldo completo, o un abono menor cuando el folio viene en el texto. Pagada: el total, para ligarla sin volver a cobrar.
+            // Receivable: the full balance, or a smaller partial payment when the folio appears in the text. Paid: the total, to link it without collecting again.
             foreach (var i in await db.Invoices.Where(i => i.Status == "emitida" && t.Amount <= i.Total - i.Paid - i.Credited
                              || i.Status == "pagada" && i.Total == t.Amount && !linked.Contains(i.Id))
                          .Select(i => new { i.Id, i.Folio, i.Status, Balance = i.Total - i.Paid - i.Credited, Customer = db.Customers.Where(c => c.Id == i.CustomerId).Select(c => c.Name).First() }).ToListAsync())
@@ -107,7 +107,7 @@ public static class Bancos
         }
         else
         {
-            // Igual que en facturas: saldo completo, o abono menor cuando el folio viene en el texto.
+            // Same as for invoices: full balance, or a smaller partial payment when the folio appears in the text.
             foreach (var o in await db.PurchaseOrders.Where(o => o.Status == "recibida" && -t.Amount <= o.Total - o.Paid
                              || o.Status == "pagada" && o.Total == -t.Amount && !linked.Contains(o.Id))
                          .Select(o => new { o.Id, o.Folio, o.Status, Balance = o.Total - o.Paid, Supplier = db.Suppliers.Where(s => s.Id == o.SupplierId).Select(s => s.Name).First() }).ToListAsync())
@@ -121,7 +121,7 @@ public static class Bancos
         return list.OrderByDescending(s => text.Contains(s.Label.Split(' ')[1].ToUpperInvariant())).ThenBy(s => s.AlreadyPaid).ToList();
     }
 
-    /// Liga el movimiento. Si el documento sigue pendiente, registra su cobro o pago con la fecha del banco (y su póliza).
+    /// Links the movement. If the document is still pending, records its collection or payment with the bank date (and its journal entry).
     public static async Task<string?> MatchAsync(AppDb db, ClaimsPrincipal user, Guid id, BankMatchRequest req)
     {
         if (!KindModule.TryGetValue(req.Kind, out var module) || !user.HasClaim(Modules.ClaimType, module)) return "Tu rol no puede conciliar ese tipo de documento.";
@@ -173,7 +173,7 @@ public static class Bancos
         g.MapPost("/{id:guid}/match", async (Guid id, BankMatchRequest req, AppDb db, ClaimsPrincipal user) =>
             await MatchAsync(db, user, id, req) is { } error ? Results.Problem(error, statusCode: 422) : Results.NoContent());
 
-        // Cargos sin documento (comisiones, intereses): póliza de egreso a gastos generales contra bancos.
+        // Charges without a document (fees, interest): expense journal entry to general expenses against bank.
         g.MapPost("/{id:guid}/expense", async (Guid id, AppDb db) =>
         {
             var t = await db.BankTransactions.SingleOrDefaultAsync(x => x.Id == id && x.Status == "pendiente" && x.Amount < 0);

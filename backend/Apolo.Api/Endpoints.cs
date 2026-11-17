@@ -18,14 +18,14 @@ public record CompanyRequest(string Name, string? Rfc, string? LegalName, string
 public static class Endpoints
 {
     static readonly PasswordHasher<User> Hasher = new();
-    // Se verifica contra este hash cuando el correo no existe, para que la respuesta tarde lo mismo.
+    // Verified against this hash when the email does not exist, so the response takes the same time.
     static readonly string DummyHash = Hasher.HashPassword(null!, "apolo-dummy");
 
     public const string VersionClaim = "ver";
     const int MaxFailedLogins = 5;
     static readonly TimeSpan Lockout = TimeSpan.FromMinutes(15);
 
-    /// Huella de lo que autoriza la sesión: si cambia la contraseña, el rol, sus módulos o el usuario se desactiva, la cookie deja de valer.
+    /// Fingerprint of what the session authorizes: if the password, the role, its modules change or the user is deactivated, the cookie stops being valid.
     public static string SessionVersion(User u) => Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
         System.Text.Encoding.UTF8.GetBytes($"{u.PasswordHash}|{u.RoleId}|{u.Active}|{string.Join(",", u.Role.Modules.Order())}")))[..16];
 
@@ -66,8 +66,8 @@ public static class Endpoints
             db.AuditEntries.Add(Event(user, "acceso", $"{{\"ip\":\"{http.Connection.RemoteIpAddress}\"}}"));
             await db.SaveChangesAsync();
 
-            // los módulos viajan en la cookie; un cambio de rol aplica al siguiente login.
-            // Si hace falta revocar al instante, validar el rol en OnValidatePrincipal.
+            // modules travel in the cookie; a role change applies at the next login.
+            // If immediate revocation is needed, validate the role in OnValidatePrincipal.
             List<Claim> claims =
             [
                 new(ClaimTypes.NameIdentifier, user.Id.ToString()),
@@ -80,8 +80,8 @@ public static class Endpoints
             return Results.NoContent();
         }).RequireRateLimiting("login");
 
-        // Alta de la primera empresa en una instalación vacía. Pide el token de instalación (Setup__Token) para que nadie más
-        // que quien despliega pueda reclamar el sistema; después de la primera empresa queda cerrado.
+        // Creation of the first company on an empty installation. It requires the installation token (Setup__Token) so that nobody other than
+        // whoever deploys can claim the system; after the first company it is closed.
         app.MapGet("/api/setup", async (AppDb db) => new { Needed = !await db.Companies.AnyAsync() });
 
         app.MapPost("/api/setup", async (SetupRequest req, AppDb db, IConfiguration config) =>
@@ -140,7 +140,7 @@ public static class Endpoints
             u.PasswordHash = Hasher.HashPassword(u, req.Next);
             db.AuditEntries.Add(Event(u, "cambio de contraseña"));
             await db.SaveChangesAsync();
-            await http.SignOutAsync(); // las demás sesiones también caen: cambió la huella
+            await http.SignOutAsync(); // the other sessions also drop: the fingerprint changed
             return Results.NoContent();
         });
 
@@ -163,7 +163,7 @@ public static class Endpoints
         g.MapGet("/users", (AppDb db) => db.Users.OrderBy(u => u.Name)
             .Select(u => new { u.Id, u.Name, u.Email, Role = u.Role.Name, u.RoleId, u.Active, Locked = u.LockedUntil > DateTime.UtcNow }).ToListAsync());
 
-        // Altas, bajas y cambios de rol (ISO 27001 A.5.18). Una baja o cambio de rol cierra las sesiones abiertas del usuario.
+        // Creates, removals and role changes (ISO 27001 A.5.18). A removal or role change closes the user's open sessions.
         g.MapPut("/users/{id:guid}", async (Guid id, UserUpdateRequest req, AppDb db, CurrentUser cu) =>
         {
             var u = await db.Users.Include(x => x.Role).SingleOrDefaultAsync(x => x.Id == id);
@@ -202,7 +202,7 @@ public static class Endpoints
             return Results.Created($"/api/users/{user.Id}", new { user.Id });
         });
 
-        // Datos fiscales del emisor. Con RFC, las facturas se timbran como CFDI 4.0.
+        // Issuer tax data. With an RFC, invoices are stamped as CFDI 4.0.
         g.MapGet("/company", (AppDb db, CurrentUser me) => db.Companies.Where(c => c.Id == me.CompanyId)
             .Select(c => new { c.Name, c.Rfc, c.LegalName, c.TaxRegime, c.ZipCode, c.Currency, c.RiskPremium }).SingleAsync());
 

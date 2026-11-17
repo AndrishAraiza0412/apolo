@@ -4,14 +4,14 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 
 namespace Apolo.Api.Data;
 
-/// Solo desarrollo: empresa demo con los cuatro roles del prototipo (DESIGN.md §3). Contraseña de todos: apolo1234
+/// Development only: demo company with the four prototype roles (DESIGN.md §3). Password for all of them: apolo1234
 public static class Seed
 {
     public static async Task RunAsync(AppDb db)
     {
         if (!await db.Companies.AnyAsync()) await DemoCompany(db);
 
-        // Acceso rápido de desarrollo: admin / admin con rol Gerencia. Seed solo corre en Development.
+        // Quick development access: admin / admin with the Gerencia (management) role. Seed only runs in Development.
         if (!await db.Users.IgnoreQueryFilters().AnyAsync(u => u.Email == "admin"))
         {
             var gerencia = await db.Roles.IgnoreQueryFilters().FirstAsync(r => r.Name == "Gerencia");
@@ -27,7 +27,7 @@ public static class Seed
         if (!await db.Suppliers.IgnoreQueryFilters().AnyAsync()) await DemoCompras(db);
         if (!await db.Projects.IgnoreQueryFilters().AnyAsync()) await DemoProyectos(db);
 
-        // Contabilidad y nómina reutilizan la lógica de los módulos, que lee con el filtro de empresa: corren como la empresa demo.
+        // Accounting and payroll reuse the modules' logic, which reads with the company filter: they run as the demo company.
         var companyId = (await db.Companies.FirstAsync(c => c.Name == "Apolo Demo")).Id;
         await using var tenant = new AppDb((DbContextOptions<AppDb>)db.GetService<IDbContextOptions>(), new CurrentUser { CompanyId = companyId });
         if (!await tenant.JournalEntries.AnyAsync()) await DemoContabilidad(tenant, companyId);
@@ -38,7 +38,7 @@ public static class Seed
         if (!await tenant.BankTransactions.AnyAsync()) await DemoBancos(tenant);
     }
 
-    /// Un estado de cuenta de ejemplo: dos depósitos que coinciden con facturas por cobrar, la última nómina pagada y una comisión.
+    /// A sample bank statement: two deposits that match receivable invoices, the last paid payroll and a fee.
     static async Task DemoBancos(AppDb db)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -51,7 +51,7 @@ public static class Seed
         await Bancos.ImportAsync(db, string.Join("\n", lines));
     }
 
-    /// Nóminas creadas antes del cálculo fiscal o de las cuotas patronales: los borradores se recalculan; las pagadas solo reciben su SBC.
+    /// Payroll runs created before the tax calculation or employer contributions: drafts are recalculated; paid ones only get their SBC.
     static async Task DemoNominaFiscal(AppDb db)
     {
         var employees = await db.Employees.ToDictionaryAsync(e => e.Id);
@@ -64,7 +64,7 @@ public static class Seed
         await db.SaveChangesAsync();
     }
 
-    /// Datos fiscales de prueba (RFC de pruebas del SAT) para que la demo timbre CFDI en modo de pruebas.
+    /// Test tax data (SAT test RFC) so the demo stamps CFDI in test mode.
     static async Task DemoFiscal(AppDb db, Guid companyId)
     {
         var c = await db.Companies.SingleAsync(x => x.Id == companyId);
@@ -76,7 +76,7 @@ public static class Seed
         await db.SaveChangesAsync();
     }
 
-    /// 60 días de salidas para que el pronóstico de demanda tenga historia. Una entrada previa las compensa: la existencia actual no cambia.
+    /// 60 days of outbound movements so the demand forecast has history. An earlier inbound offsets them: current stock does not change.
     static async Task DemoDemanda(AppDb db)
     {
         var rnd = new Random(42);
@@ -101,13 +101,13 @@ public static class Seed
             db.InventoryMovements.AddRange([back, .. outs]);
         }
         await db.SaveChangesAsync();
-        // AppDb sella CreatedAt al guardar; la historia se fecha después.
+        // AppDb stamps CreatedAt on save; the history is dated afterwards.
         var ids = dated.Select(x => x.Id).ToArray();
         var ats = dated.Select(x => x.At).ToArray();
         await db.Database.ExecuteSqlAsync($"UPDATE \"InventoryMovements\" SET \"CreatedAt\" = v.at FROM unnest({ids}, {ats}) AS v(id, at) WHERE \"Id\" = v.id");
     }
 
-    /// Póliza de apertura y las pólizas de lo que ya pasó (facturas, cobros, compras), en orden cronológico.
+    /// Opening journal entry and the entries for what already happened (invoices, collections, purchases), in chronological order.
     static async Task DemoContabilidad(AppDb db, Guid companyId)
     {
         var invoices = await db.Invoices.Include(i => i.Lines).Where(i => i.Status == "emitida" || i.Status == "pagada").ToListAsync();
@@ -115,7 +115,7 @@ public static class Seed
         var first = invoices.Select(i => i.IssuedAt).Concat(purchases.Select(o => o.ReceivedAt)).Min() ?? DateTime.UtcNow;
         var opening = DateOnly.FromDateTime(first).AddDays(-1);
 
-        // Inventario inicial valuado al costo actual; el capital cuadra la apertura.
+        // Opening inventory valued at current cost; equity balances the opening entry.
         var stock = await db.InventoryMovements.Where(m => m.Note == "Inventario inicial")
             .Join(db.Products, m => m.ProductId, p => p.Id, (m, p) => m.Quantity * p.Cost).SumAsync();
         await Contabilidad.PostAsync(db, companyId, opening, "diario", "Saldos iniciales", "apertura", null,
@@ -128,7 +128,7 @@ public static class Seed
             .OrderBy(e => e.At);
         foreach (var e in events) await e.Post();
 
-        // Gastos de operación de cada mes, para que el estado de resultados no sea solo ventas.
+        // Operating expenses for each month, so the income statement is not just sales.
         for (var m = 5; m >= 0; m--)
         {
             var day = new DateOnly(DateTime.Today.Year, DateTime.Today.Month, 1).AddMonths(-m).AddDays(4);
@@ -153,7 +153,7 @@ public static class Seed
             E("Sofía Ramírez León", "Contadora", "Finanzas", 1_100, 5));
         await db.SaveChangesAsync();
 
-        // Dos quincenas pagadas y la actual en borrador.
+        // Two paid biweekly pay periods and the current one as a draft.
         var month = new DateOnly(today.Year, today.Month, 1);
         (DateOnly Start, DateOnly End, bool Pay)[] runs =
         [
@@ -201,7 +201,7 @@ public static class Seed
         await db.SaveChangesAsync();
     }
 
-    /// Proveedores y dos órdenes: una enviada esperando mercancía y un borrador para resurtir lo que está bajo mínimo.
+    /// Suppliers and two orders: one sent awaiting goods and one draft to restock what is below minimum.
     static async Task DemoCompras(AppDb db)
     {
         var companyId = (await db.Companies.FirstAsync(c => c.Name == "Apolo Demo")).Id;
@@ -238,7 +238,7 @@ public static class Seed
         await db.SaveChangesAsync();
     }
 
-    /// Historial de 6 meses para el Dashboard. Partidas de servicio: no mueven inventario.
+    /// 6-month history for the Dashboard. Service line items: they do not move inventory.
     static async Task DemoInvoices(AppDb db)
     {
         var companyId = (await db.Companies.FirstAsync(c => c.Name == "Apolo Demo")).Id;
@@ -328,7 +328,7 @@ public static class Seed
         await db.SaveChangesAsync();
     }
 
-    /// Los cuatro roles con que arranca toda empresa, demo o real; Gerencia ve todos los módulos.
+    /// The four roles every company starts with, demo or real; Gerencia (management) sees all modules.
     public static Role[] DefaultRoles(Guid companyId)
     {
         string[] general = ["dashboard", "ia"];

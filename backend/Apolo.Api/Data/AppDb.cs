@@ -36,7 +36,7 @@ public class AppDb(DbContextOptions<AppDb> options, CurrentUser? user = null) : 
     public DbSet<PayrollRun> PayrollRuns => Set<PayrollRun>();
     public DbSet<PayrollLine> PayrollLines => Set<PayrollLine>();
 
-    // Sin usuario (login, seed) los filtros no devuelven nada; esos caminos usan IgnoreQueryFilters a propósito.
+    // Without a user (login, seed) the filters return nothing; those paths use IgnoreQueryFilters on purpose.
     public Guid? CompanyId => user?.CompanyId;
 
     protected override void OnModelCreating(ModelBuilder b)
@@ -186,7 +186,7 @@ b.Entity<PurchaseOrder>().HasIndex(o => new { o.CompanyId, o.Folio }).IsUnique()
 
     void Stamp()
     {
-        // Periodo cerrado: ninguna póliza nueva con fecha igual o anterior al cierre, salvo la propia póliza de cierre.
+        // Closed period: no new journal entry dated on or before the closing date, except the closing entry itself.
         foreach (var j in ChangeTracker.Entries<JournalEntry>().Where(x => x.State == EntityState.Added && x.Entity.Source != "cierre").Select(x => x.Entity))
             if (Companies.Find(j.CompanyId == Guid.Empty ? CompanyId : j.CompanyId)?.ClosedThrough is DateOnly closed && j.Date <= closed)
                 throw new PeriodClosedException(closed);
@@ -212,7 +212,7 @@ b.Entity<PurchaseOrder>().HasIndex(o => new { o.CompanyId, o.Folio }).IsUnique()
             }
             if (e.State != EntityState.Deleted) e.Entity.UpdatedAt = now;
 
-            if (e.Entity is AuditEntry or BackgroundJob or AgentUsage) continue; // el avance de una tarea o el consumo de IA no son cambios de negocio
+            if (e.Entity is AuditEntry or BackgroundJob or AgentUsage) continue; // a task's progress or AI usage are not business changes
             var changes = e.State == EntityState.Deleted ? null : JsonSerializer.Serialize(
                 e.Properties
                     .Where(p => e.State == EntityState.Added || p.IsModified)

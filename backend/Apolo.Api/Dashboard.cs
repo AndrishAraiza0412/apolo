@@ -6,14 +6,14 @@ namespace Apolo.Api;
 
 public static class Dashboard
 {
-    /// Cada sección sale solo si el rol tiene permiso sobre su módulo: el dashboard no filtra datos que el módulo ocultaría.
+    /// Each section appears only if the role has permission on its module: the dashboard does not expose data that the module would hide.
     public static void MapDashboard(this WebApplication app)
     {
         app.MapGet("/api/dashboard", async (AppDb db, ClaimsPrincipal user) =>
         {
             bool Can(string module) => user.HasClaim(Modules.ClaimType, module);
             var today = DateOnly.FromDateTime(DateTime.Today);
-            // meses en UTC; si el corte de mes a medianoche local importa, convertir con la zona de la empresa.
+            // months in UTC; if the month cut-off at local midnight matters, convert using the company's time zone.
             var monthStart = new DateTime(today.Year, today.Month, 1, 0, 0, 0, DateTimeKind.Utc);
             var sixMonthsAgo = monthStart.AddMonths(-5);
 
@@ -34,7 +34,7 @@ public static class Dashboard
                     Overdue = await issued.Where(i => i.Status == "emitida" && i.DueDate < today).SumAsync(i => i.Total - i.Paid - i.Credited),
                     OverdueCount = await issued.CountAsync(i => i.Status == "emitida" && i.DueDate < today),
                     Drafts = await db.Invoices.CountAsync(i => i.Status == "borrador"),
-                    // Los 6 meses siempre, con 0 donde no hubo ventas: una barra ausente se lee como dato faltante.
+                    // Always the 6 months, with 0 where there were no sales: a missing bar reads as missing data.
                     Monthly = Enumerable.Range(0, 6).Select(k => sixMonthsAgo.AddMonths(k)).Select(m => new
                     {
                         Month = $"{m:yyyy-MM}",
@@ -80,7 +80,7 @@ public static class Dashboard
 
             if (Can("ia"))
             {
-                // Solo propuestas que este rol puede aprobar.
+                // Only proposals this role can approve.
                 var kinds = new List<string>();
                 if (Can("facturacion")) kinds.Add("factura");
                 if (Can("compras")) kinds.Add("orden_compra");
@@ -93,7 +93,7 @@ public static class Dashboard
 
             if (Can("contabilidad"))
             {
-                // Saldo de caja y bancos al cierre de cada uno de los últimos 6 meses.
+                // Cash and bank balance at the end of each of the last 6 months.
                 var cashIds = await db.Accounts.Where(a => a.Code == Contabilidad.Caja || a.Code == Contabilidad.Bancos).Select(a => a.Id).ToListAsync();
                 var byMonth = await db.JournalLines.Where(l => cashIds.Contains(l.AccountId))
                     .Join(db.JournalEntries, l => l.JournalEntryId, e => e.Id, (l, e) => new { e.Date.Year, e.Date.Month, Delta = l.Debit - l.Credit })

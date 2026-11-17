@@ -18,7 +18,7 @@ from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).parent
-PASSWORD = "apolo1234"  # Usuarios demo; solo existen en Development.
+PASSWORD = "apolo1234"  # Demo users; they only exist in Development.
 CATEGORIES = {
     "tools": "Right tool and correct figures",
     "permissions": "Refuses what the role cannot see",

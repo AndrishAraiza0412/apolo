@@ -39,7 +39,7 @@ public class FiscalTests
     [Fact]
     public async Task Professional_billing_a_company_withholds_isr_and_two_thirds_of_iva()
     {
-        (company.Rfc, company.TaxRegime) = ("GODE561231GR8", "612");   // persona física, honorarios
+        (company.Rfc, company.TaxRegime) = ("GODE561231GR8", "612");   // individual, professional fees
         var inv = await Emit(10_000);
 
         Assert.Equal((1_000m, 1_066.67m, 9_533.33m), (inv.IsrWithheld, inv.IvaWithheld, inv.Total));
@@ -49,7 +49,7 @@ public class FiscalTests
         var b = await Balances(DateOnly.MaxValue);
         Assert.Equal((9_533.33m, 1_000m, 1_066.67m), (b[Contabilidad.Clientes], b[Contabilidad.IsrRetenidoClientes], b[Contabilidad.IvaRetenidoClientes]));
 
-        // El IVA retenido se compensa contra el trasladado: solo se paga 1,600 − 1,066.67.
+        // Withheld VAT is offset against VAT charged: only 1,600 − 1,066.67 is paid.
         var iva = (await Impuestos.ObligationsAsync(db, DateOnly.MaxValue)).Single(o => o.Kind == "iva");
         Assert.Equal(533.33m, iva.Due);
         var (_, error) = await Facturacion.CreditAsync(db, inv.Id, 100, "descuento", "Ajuste");
@@ -95,7 +95,7 @@ public class FiscalTests
         var sales = bal.Elements().Single(e => e.Attribute("NumCta")!.Value == "401");
         Assert.Equal(("0.00", "1000.00", "1000.00"), (sales.Attribute("Debe")!.Value, sales.Attribute("Haber")!.Value, sales.Attribute("SaldoFin")!.Value));
 
-        // Una cuenta nueva con movimientos y sin código agrupador impide generar el XML.
+        // A new account with movements and no grouping code prevents generating the XML.
         db.Accounts.Add(new Account { Code = "610", Name = "Publicidad", Type = "gasto" });
         await db.SaveChangesAsync();
         var ad = await db.Accounts.SingleAsync(a => a.Code == "610");

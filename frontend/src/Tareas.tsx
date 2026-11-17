@@ -7,7 +7,7 @@ type Check = { name: string; ok: boolean; detail: string }
 const time = new Intl.DateTimeFormat('es-MX', { dateStyle: 'short', timeStyle: 'short' })
 const STATUS = { pendiente: 'En cola', ejecutando: 'Ejecutando', terminada: 'Terminada', fallida: 'Falló' }
 
-// Tareas en segundo plano del usuario. Consulta cada segundo solo mientras alguna sigue corriendo.
+// The user's background tasks. Polls every second only while one is still running.
 export default function Jobs({ kind, refresh = 0 }: { kind?: string; refresh?: number }) {
   const [jobs, setJobs] = useState<Job[]>([])
   const [tick, setTick] = useState(0)

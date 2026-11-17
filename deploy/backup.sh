@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Respaldo comprimido de la base (formato custom de pg_dump) y limpieza de los anteriores a KEEP_DAYS días.
+# Compressed database backup (pg_dump custom format) and cleanup of those older than KEEP_DAYS days.
 set -euo pipefail
 file="/backups/apolo-$(date +%Y%m%d-%H%M%S).dump"
 pg_dump -d apolo -Fc -f "$file.tmp"

@@ -19,7 +19,7 @@ public class PronosticosTests
         var outs = Enumerable.Range(0, 90).Select(_ => new InventoryMovement { ProductId = p.Id, Kind = "salida", Quantity = -5 }).ToList();
         db.InventoryMovements.AddRange(outs);
         await db.SaveChangesAsync();
-        // Una salida de 5 por día durante los últimos 90 días.
+        // An outbound movement of 5 per day for the last 90 days.
         for (var i = 0; i < outs.Count; i++) outs[i].CreatedAt = DateTime.Today.AddDays(-i).AddHours(12).ToUniversalTime();
         await db.SaveChangesAsync();
 
@@ -56,7 +56,7 @@ public class PronosticosTests
         Assert.Equal(100, steps[^1]);
         Assert.True(steps.SequenceEqual(steps.Order()));
 
-        // Un movimiento sin póliza descuadra inventarios contra valuación.
+        // A movement without a journal entry makes inventory and valuation not match.
         await Inventario.RegisterAsync(db, p.Id, "entrada", 50, null);
         checks = await Tareas.ReconcileAsync(db, (_, _) => Task.CompletedTask);
         Assert.False(checks.Single(ch => ch.Name == "Inventarios contra valuación").Ok);

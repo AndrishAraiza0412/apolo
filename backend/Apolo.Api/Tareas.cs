@@ -8,8 +8,8 @@ namespace Apolo.Api;
 
 public record JobRequest(string Kind, string? Report, DateOnly? From, DateOnly? To);
 
-/// Tareas en segundo plano con avance visible (DESIGN.md §4). El estado vive en la base; la cola en memoria solo despierta al worker.
-// un worker en proceso; si hay varias instancias de la API, mover a Hangfire o a una cola externa.
+/// Background tasks with visible progress (DESIGN.md §4). State lives in the database; the in-memory queue only wakes the worker.
+// one in-process worker; if there are several API instances, move to Hangfire or an external queue.
 public static class Tareas
 {
     public static readonly Channel<Guid> Queue = Channel.CreateUnbounded<Guid>();
@@ -31,7 +31,7 @@ public static class Tareas
         return (job, null);
     }
 
-    /// Siete revisiones de consistencia entre módulos y libros. Cada una guarda su avance.
+    /// Seven consistency checks between modules and ledgers. Each one saves its progress.
     public static async Task<List<Check>> ReconcileAsync(AppDb db, Func<int, string, Task> progress)
     {
         var checks = new List<Check>();
@@ -85,7 +85,7 @@ public static class Tareas
         {
             var value = Math.Round(await db.Products.SumAsync(p => db.InventoryMovements.Where(m => m.ProductId == p.Id).Sum(m => m.Quantity) * p.Cost), 2);
             var diff = Bal(balances, Contabilidad.Inventarios) - value;
-            // Informativa: el costo del producto se actualiza con cada compra, la póliza conserva el histórico.
+            // Informational: the product's cost is updated with each purchase; the journal entry keeps the history.
             return (Math.Abs(diff) <= Math.Max(1, value * 0.02m), $"Cuenta 115: {Bal(balances, Contabilidad.Inventarios):C}; existencias al último costo: {value:C}. " + (diff == 0 ? "" : $"Diferencia {diff:C} por cambios de costo."));
         });
         await progress(100, "Terminada");
@@ -101,7 +101,7 @@ public static class Tareas
             job = await root.BackgroundJobs.IgnoreQueryFilters().SingleOrDefaultAsync(j => j.Id == id, ct);
         if (job is null || job.Status is "terminada" or "fallida") return;
 
-        // La tarea corre con la empresa y los permisos de quien la pidió.
+        // The task runs with the company and permissions of whoever requested it.
         await using var db = new AppDb(options, new CurrentUser { CompanyId = job.CompanyId, UserId = job.CreatedBy });
         var owner = await db.Users.Include(u => u.Role).SingleAsync(u => u.Id == job.CreatedBy, ct);
         var user = new ClaimsPrincipal(new ClaimsIdentity(owner.Role.Modules.Select(m => new Claim(Modules.ClaimType, m)), "job"));
@@ -144,7 +144,7 @@ public static class Tareas
     {
         protected override async Task ExecuteAsync(CancellationToken ct)
         {
-            // Al arrancar retoma lo que quedó pendiente o a medias por un reinicio.
+            // On startup it resumes whatever was left pending or half-done by a restart.
             using (var scope = services.CreateScope())
             await using (var db = new AppDb(scope.ServiceProvider.GetRequiredService<DbContextOptions<AppDb>>()))
                 foreach (var id in await db.BackgroundJobs.IgnoreQueryFilters().Where(j => j.Status == "pendiente" || j.Status == "ejecutando").Select(j => j.Id).ToListAsync(ct))
@@ -152,7 +152,7 @@ public static class Tareas
 
             await foreach (var id in Queue.Reader.ReadAllAsync(ct))
             {
-                // Una tarea rota no debe tumbar la API ni a las demás.
+                // A broken task must not bring down the API or the other tasks.
                 try { await RunAsync(services, id, ct); }
                 catch (Exception ex) when (ex is not OperationCanceledException)
                 {

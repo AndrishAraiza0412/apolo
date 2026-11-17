@@ -4,7 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Apolo.Api;
 
-/// Reportes tabulares. Cada uno exige permiso sobre el módulo de sus datos, además del de Reportes.
+/// Tabular reports. Each one requires permission on its data's module, in addition to Reports.
 public static class Reportes
 {
     public record Column(string Key, string Label, string Type = "text");
@@ -90,10 +90,10 @@ public static class Reportes
 
     static IEnumerable<Report> For(ClaimsPrincipal user) => All.Where(r => user.HasClaim(Modules.ClaimType, r.Module));
 
-    /// Para Apolo IA: los reportes que el rol puede generar.
+    /// For Apolo IA: the reports the role can generate.
     public static IEnumerable<(string Code, string Name)> Available(ClaimsPrincipal user) => For(user).Select(r => (r.Code, r.Name));
 
-    /// Para Apolo IA: los reportes que el rol no puede generar.
+    /// For Apolo IA: the reports the role cannot generate.
     public static IEnumerable<string> Unavailable(ClaimsPrincipal user) => All.Except(For(user)).Select(r => r.Name);
 
     public static async Task<Table?> RunAsync(AppDb db, ClaimsPrincipal user, string code, DateOnly? from, DateOnly? to)

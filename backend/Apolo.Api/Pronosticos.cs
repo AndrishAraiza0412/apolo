@@ -3,7 +3,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Apolo.Api;
 
-/// Servicio estadístico de pronósticos (DESIGN.md §4): el cálculo es determinista y vive aquí; Apolo IA solo lo explica.
+/// Statistical forecasting service (DESIGN.md §4): the calculation is deterministic and lives here; Apolo IA only explains it.
 public static class Pronosticos
 {
     public record DayPoint(DateOnly Date, decimal Stock);
@@ -19,8 +19,8 @@ public static class Pronosticos
 
     static decimal Round(decimal x) => Math.Round(x, 2, MidpointRounding.AwayFromZero);
 
-    /// Demanda diaria = promedio móvil exponencial (α = 0.1) de las salidas de los últimos 90 días, con días sin venta en cero.
-    // sin estacionalidad semanal ni tendencia; pasar a Holt-Winters cuando haya un año de historia.
+    /// Daily demand = exponential moving average (α = 0.1) of outbound movements over the last 90 days, with days without sales as zero.
+    // no weekly seasonality or trend; move to Holt-Winters once there is a year of history.
     public static async Task<List<Demand>> DemandAsync(AppDb db, Guid? productId = null)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -49,7 +49,7 @@ public static class Pronosticos
         }).ToList();
     }
 
-    /// Saldo de caja y bancos al cierre de los próximos 3 meses: lo ya comprometido más promedios recientes.
+    /// Cash and bank balance at the end of the next 3 months: what is already committed plus recent averages.
     public static async Task<Cash> CashAsync(AppDb db)
     {
         var today = DateOnly.FromDateTime(DateTime.Today);
@@ -63,11 +63,11 @@ public static class Pronosticos
             .Join(db.JournalEntries, l => l.JournalEntryId, e => e.Id, (l, e) => new { l.Debit, l.Credit, e.Date })
             .Where(x => x.Date <= today).SumAsync(x => x.Debit - x.Credit);
 
-        // Cobranza de facturas emitidas: al vencimiento; las vencidas, dentro de 30 días.
+        // Collections from issued invoices: at the due date; overdue ones, within 30 days.
         foreach (var i in await db.Invoices.Where(i => i.Status == "emitida").Select(i => new { i.DueDate, Total = i.Total - i.Paid - i.Credited }).ToListAsync())
             events.Add((i.DueDate < today ? today.AddDays(30) : i.DueDate ?? today, "Cobranza de facturas emitidas", i.Total));
 
-        // Pagos a proveedores: recibidas al vencer su crédito; enviadas, una semana para recibir más el crédito.
+        // Payments to suppliers: received ones when their credit term expires; sent ones, one week to receive plus the credit term.
         var credit = await db.Suppliers.ToDictionaryAsync(s => s.Id, s => s.CreditDays);
         foreach (var o in await db.PurchaseOrders.Where(o => o.Status == "recibida" || o.Status == "enviada")
                      .Select(o => new { o.Status, o.SupplierId, o.ReceivedAt, o.SentAt, Total = o.Total - o.Paid }).ToListAsync())
@@ -77,7 +77,7 @@ public static class Pronosticos
             events.Add((due < today ? today : due, "Pagos a proveedores", -o.Total));
         }
 
-        // Nómina: el neto promedio de las últimas pagadas, cada quincena que aún no se paga.
+        // Payroll: the average net of the last paid runs, for each biweekly period not yet paid.
         var paid = await db.PayrollRuns.Where(r => r.Status == "pagada").OrderByDescending(r => r.EndDate).Take(2).ToListAsync();
         var lastPaidEnd = paid.Count > 0 ? paid[0].EndDate : today;
         if (paid.Count > 0)
@@ -88,7 +88,7 @@ public static class Pronosticos
                     if (payday > lastPaidEnd && payday <= horizon) events.Add((payday < today ? today : payday, "Nómina", -net));
         }
 
-        // Promedios de los últimos 3 meses completos: gastos fijos (6xx sin sueldos) y facturación nueva.
+        // Averages of the last 3 complete months: fixed expenses (6xx excluding salaries) and new invoicing.
         var from3 = monthStart.AddMonths(-3);
         var fixedIds = await db.Accounts.Where(a => a.Type == "gasto" && a.Code.StartsWith("6") && a.Code != Contabilidad.Sueldos).Select(a => a.Id).ToListAsync();
         var fixedAvg = Round(await db.JournalLines.Where(l => fixedIds.Contains(l.AccountId))
@@ -101,7 +101,7 @@ public static class Pronosticos
         for (var m = monthStart.AddMonths(1); m <= horizon; m = m.AddMonths(1))
         {
             if (fixedAvg > 0) events.Add((m.AddDays(4), "Gastos fijos (promedio)", -fixedAvg));
-            // Lo que se facture de hoy en adelante se cobra al mes siguiente.
+            // What is invoiced from today on is collected the following month.
             if (billedAvg > 0) events.Add((m.AddDays(14), "Ventas futuras (promedio)", billedAvg));
         }
 
@@ -122,7 +122,7 @@ public static class Pronosticos
     {
         var g = app.MapGroup("/api/forecast");
 
-        // Inventario y Compras usan el pronóstico de demanda.
+        // Inventory and Purchasing use the demand forecast.
         g.MapGet("/demand", (AppDb db) => DemandAsync(db))
             .RequireAuthorization(p => p.RequireClaim(Modules.ClaimType, "inventario", "compras"));
         g.MapGet("/demand/{id:guid}", async (Guid id, AppDb db) =>

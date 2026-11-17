@@ -166,7 +166,7 @@ function OpportunityForm({ o, customers, sellers, onSaved }: {
   )
 }
 
-// Clientes y proveedores comparten pantalla; Compras la usa con kind="proveedor".
+// Customers and suppliers share a screen; Purchasing uses it with kind="proveedor".
 const KIND = {
   cliente: { path: '/customers', plural: 'clientes', amount: 'Pipeline abierto' },
   proveedor: { path: '/suppliers', plural: 'proveedores', amount: 'Por recibir' },

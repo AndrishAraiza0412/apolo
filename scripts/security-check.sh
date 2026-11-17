@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
-# Revisión de seguridad antes de cada versión (gestión de vulnerabilidades y cambios): pruebas, dependencias y secretos.
-# Uso: scripts/security-check.sh  (desde la raíz del repositorio). Sale con error si algo falla.
+# Security review before each release (vulnerability and change management): tests, dependencies and secrets.
+# Usage: scripts/security-check.sh  (from the repository root). Exits with an error if anything fails.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 DOTNET=$([ -x .dotnet/dotnet ] && echo .dotnet/dotnet || echo dotnet)

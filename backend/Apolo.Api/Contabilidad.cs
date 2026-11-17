@@ -7,7 +7,7 @@ public record AccountRequest(string Code, string Name, string Type, bool Active 
 public record JournalLineRequest(Guid AccountId, decimal Debit, decimal Credit, string? Description);
 public record JournalRequest(DateOnly Date, string Kind, string Concept, List<JournalLineRequest> Lines);
 
-/// Pólizas automáticas de cada operación y pólizas manuales. Saldos = suma de partidas, como el inventario (DESIGN.md §9).
+/// Automatic journal entries for each operation, and manual entries. Balances = sum of lines, like inventory (DESIGN.md §9).
 public static class Contabilidad
 {
     public const string Caja = "101", Bancos = "102", Clientes = "105", Inventarios = "115", IvaAcreditable = "118",
@@ -16,7 +16,7 @@ public static class Contabilidad
         CuotasPorPagar = "214", CuotasPatronales = "603", Ptu = "604", DevolucionesVentas = "402",
         PagosProvisionales = "117", IsrRetenidoClientes = "119", IvaRetenidoClientes = "120", ResultadoEjercicio = "305";
 
-    /// Código agrupador del SAT por omisión para las cuentas del catálogo mínimo; las demás se capturan en cada cuenta.
+    /// Default SAT grouping code for the accounts in the minimal chart; the rest are entered on each account.
     public static readonly Dictionary<string, string> SatCodes = new()
     {
         [Caja] = "101.01", [Bancos] = "102.01", [Clientes] = "105.01", [Inventarios] = "115.01", [IvaAcreditable] = "118.01",
@@ -27,7 +27,7 @@ public static class Contabilidad
 
     public static string? SatCodeOf(Account a) => a.SatCode ?? SatCodes.GetValueOrDefault(a.Code);
 
-    // Catálogo mínimo que se crea la primera vez que una empresa contabiliza algo.
+    // Minimal chart of accounts, created the first time a company posts anything.
     static readonly (string Code, string Name, string Type)[] Catalog =
     [
         (Caja, "Caja", "activo"), (Bancos, "Bancos", "activo"), (Clientes, "Clientes", "activo"),
@@ -45,7 +45,7 @@ public static class Contabilidad
 
     public static string FolioText(int folio) => $"P-{folio:00000}";
 
-    /// Activo y gasto crecen con cargos; pasivo, capital e ingreso con abonos.
+    /// Assets and expenses grow with debits; liabilities, equity and income with credits.
     public static decimal Balance(string type, decimal debit, decimal credit) =>
         type is "activo" or "gasto" ? debit - credit : credit - debit;
 
@@ -62,7 +62,7 @@ public static class Contabilidad
         return all;
     }
 
-    /// Agrega la póliza al contexto; la guarda quien llama, en la misma transacción que la operación que la origina.
+    /// Adds the journal entry to the context; the caller saves it, in the same transaction as the operation that originates it.
     public static async Task PostAsync(AppDb db, Guid companyId, DateOnly date, string kind, string concept, string source, Guid? sourceId,
         params (string Code, decimal Debit, decimal Credit)[] lines)
     {
@@ -78,7 +78,7 @@ public static class Contabilidad
         });
     }
 
-    /// Revierte todas las pólizas vigentes de un documento (p. ej. al cancelar una factura emitida).
+    /// Reverses all active journal entries of a document (e.g. when cancelling an issued invoice).
     public static async Task ReverseSourceAsync(AppDb db, string source, Guid sourceId, DateOnly date, string concept)
     {
         var entries = await db.JournalEntries.Include(e => e.Lines)
@@ -99,7 +99,7 @@ public static class Contabilidad
         return r;
     }
 
-    // Pólizas de cada operación. Fecha = día local de la operación, igual que vencimientos y reportes (DateTime.Today).
+    // Journal entries for each operation. Date = local day of the operation, same as due dates and reports (DateTime.Today).
     static DateOnly Day(DateTime? at) => DateOnly.FromDateTime((at ?? DateTime.UtcNow).ToLocalTime());
 
     public static async Task PostInvoiceEmittedAsync(AppDb db, Invoice inv)
@@ -113,7 +113,7 @@ public static class Contabilidad
             (CostoVentas, cost, 0), (Inventarios, 0, cost));
     }
 
-    /// Cobro de una factura o de una parcialidad.
+    /// Collection of an invoice or of an installment.
     public static Task PostInvoicePaidAsync(AppDb db, Invoice inv, decimal? amount = null, DateTime? at = null, int installment = 1) =>
         PostAsync(db, inv.CompanyId, Day(at ?? inv.PaidAt), "ingreso",
             $"Cobro factura {Facturacion.FolioText(inv.Folio)}" + (amount is not null && amount != inv.Total ? $" (parcialidad {installment})" : ""), "factura", inv.Id,
@@ -123,26 +123,26 @@ public static class Contabilidad
         PostAsync(db, po.CompanyId, Day(po.ReceivedAt), "diario", $"Compra {Compras.FolioText(po.Folio)}", "compra", po.Id,
             (Inventarios, po.Subtotal, 0), (IvaAcreditable, po.Tax, 0), (Proveedores, 0, po.Total));
 
-    /// Nota de crédito: disminuye ventas e IVA trasladado contra la cuenta del cliente.
+    /// Credit note: reduces sales and VAT charged against the customer's account.
     public static Task PostCreditNoteAsync(AppDb db, Invoice inv, CreditNote n) =>
         PostAsync(db, inv.CompanyId, Day(n.IssuedAt), "diario", $"Nota de crédito NC-{n.Folio:0000} a factura {Facturacion.FolioText(inv.Folio)}", "factura", inv.Id,
             (DevolucionesVentas, n.Subtotal, 0), (IvaTrasladado, n.Tax, 0), (Clientes, 0, n.Total));
 
-    /// Pago o abono a un proveedor.
+    /// Payment or partial payment to a supplier.
     public static Task PostPurchasePaidAsync(AppDb db, PurchaseOrder po, decimal? amount = null, DateTime? at = null) =>
         PostAsync(db, po.CompanyId, Day(at ?? po.PaidAt), "egreso",
             $"Pago compra {Compras.FolioText(po.Folio)}" + (amount is not null && amount != po.Total ? " (abono)" : ""), "compra", po.Id,
             (Proveedores, amount ?? po.Total, 0), (Bancos, 0, amount ?? po.Total));
 
-    /// Percepciones al gasto (PTU a su cuenta), neto contra bancos, retenciones por enterar; las cuotas patronales se provisionan
-    /// como gasto contra el pasivo que se paga al IMSS e INFONAVIT. Las partidas en cero se omiten.
+    /// Earnings to expense (PTU profit sharing to its own account), net pay against bank, withholdings payable; employer contributions are provisioned
+    /// as an expense against the liability paid to IMSS and INFONAVIT. Zero-amount lines are omitted.
     public static Task PostPayrollPaidAsync(AppDb db, PayrollRun run) =>
         PostAsync(db, run.CompanyId, Day(run.PaidAt), "egreso",
             $"Nómina {Rrhh.FolioText(run.Folio)}{(run.Kind == "ordinaria" ? "" : $" {run.Kind}")} ({run.StartDate:dd/MM}–{run.EndDate:dd/MM})", "nomina", run.Id,
             (run.Kind == "ptu" ? Ptu : Sueldos, run.Gross, 0), (Bancos, 0, run.Net), (RetencionesPorPagar, 0, run.Deductions),
             (CuotasPatronales, run.EmployerCost, 0), (CuotasPorPagar, 0, run.EmployerCost));
 
-    /// Saldo inicial, cargos, abonos y saldo final por cuenta en el periodo.
+    /// Opening balance, debits, credits and closing balance per account for the period.
     public static async Task<List<AccountBalance>> BalancesAsync(AppDb db, DateOnly from, DateOnly to)
     {
         var accounts = await db.Accounts.OrderBy(a => a.Code).ToListAsync();
@@ -193,7 +193,7 @@ public static class Contabilidad
         g.MapGet("/accounts", async (AppDb db, CurrentUser me) =>
         {
             await AccountsAsync(db, me.CompanyId!.Value);
-            await db.SaveChangesAsync(); // crea el catálogo base la primera vez
+            await db.SaveChangesAsync(); // creates the base chart of accounts the first time
             return (await db.Accounts.OrderBy(a => a.Code).ToListAsync()).Select(a => new { a.Id, a.Code, a.Name, a.Type, a.Active, SatCode = SatCodeOf(a) });
         });
 
@@ -218,7 +218,7 @@ public static class Contabilidad
             if (string.IsNullOrWhiteSpace(req.Name)) return Results.ValidationProblem(new Dictionary<string, string[]> { ["name"] = ["Nombre requerido."] });
             if (SatCodeError(req.SatCode) is { } bad) return bad;
             a.SatCode = Api.Ventas.Clean(req.SatCode);
-            // Código y tipo no cambian: reclasificarían movimientos ya registrados.
+            // Code and type do not change: they would reclassify movements already recorded.
             a.Name = req.Name.Trim();
             a.Active = req.Active;
             await db.SaveChangesAsync();

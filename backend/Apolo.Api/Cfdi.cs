@@ -6,9 +6,9 @@ using QRCoder;
 
 namespace Apolo.Api;
 
-/// CFDI 4.0 de ingreso (DESIGN.md §12). Arma el XML del SAT y lo "timbra" en modo de pruebas.
-// timbrado simulado — UUID local y sellos "PRUEBAS". Para producción: firmar la cadena original con el CSD
-// (.cer/.key) y enviar el XML al PAC elegido; solo cambia Stamp().
+/// CFDI 4.0 income invoice (DESIGN.md §12). Builds the SAT XML and "stamps" it in test mode.
+// simulated stamping — local UUID and "PRUEBAS" (test) seals. For production: sign the original string with the CSD
+// (.cer/.key) and send the XML to the chosen PAC (stamping provider); only Stamp() changes.
 public static partial class Cfdi
 {
     public const string PublicoGeneral = "XAXX010101000";
@@ -40,10 +40,10 @@ public static partial class Cfdi
     public static bool ValidZip(string? zip) => zip is not null && ZipPattern().IsMatch(zip);
     public static bool ValidSatCode(string? code) => code is not null && SatCodePattern().IsMatch(code);
 
-    /// La empresa factura electrónicamente cuando tiene RFC.
+    /// The company invoices electronically when it has an RFC (tax ID).
     public static bool Enabled(Company c) => !string.IsNullOrWhiteSpace(c.Rfc);
 
-    /// Lo que el SAT rechazaría. Vacío = se puede timbrar.
+    /// What the SAT (tax authority) would reject. Empty = it can be stamped.
     public static List<string> Validate(Company c, Customer r)
     {
         var e = new List<string>();
@@ -65,14 +65,14 @@ public static partial class Cfdi
 
     static decimal Round(decimal x) => Math.Round(x, 2, MidpointRounding.AwayFromZero);
 
-    /// Base e IVA por tasa, redondeados por partida como en Facturacion.Totals.
+    /// Base and VAT (IVA) per rate, rounded per line item as in Facturacion.Totals.
     static List<(decimal Rate, decimal Base, decimal Tax)> Taxes(Invoice inv) => inv.Lines
         .Select(l => (l.TaxRate, Amount: Round(l.Quantity * l.UnitPrice)))
         .GroupBy(x => x.TaxRate).OrderByDescending(g => g.Key)
         .Select(g => (g.Key, g.Sum(x => x.Amount), g.Sum(x => Round(x.Amount * g.Key)))).ToList();
 
-    /// Retenciones (LISR 106 y 116, LIVA 1-A II): persona física que presta servicios o arrienda (partidas sin producto) a una persona moral.
-    /// ISR 10% (honorarios 612, arrendamiento 606) o 1.25% (RESICO 626); IVA dos terceras partes del 16%.
+    /// Withholdings (LISR 106 and 116, LIVA 1-A II): an individual who provides services or leases property (lines without a product) to a legal entity.
+    /// ISR 10% (professional fees 612, leasing 606) or 1.25% (RESICO 626); VAT two thirds of 16%.
     public const decimal IvaWithholdingRate = 0.106667m;
 
     public static List<(string Tax, decimal Base, decimal Rate, decimal Amount)> Withholdings(Company? c, Customer r, IEnumerable<InvoiceLine> lines)
@@ -106,7 +106,7 @@ public static partial class Cfdi
             new XAttribute("UsoCFDI", general && use != "CP01" ? "S01" : use));
     }
 
-    /// URL de verificación del SAT que va en el QR de la representación impresa (Anexo 20).
+    /// SAT verification URL that goes in the QR code of the printed representation (Annex 20).
     public static string QrUrl(string emitter, string receiver, decimal total, Guid uuid, string sello) =>
         $"https://verificacfdi.facturaelectronica.sat.gob.mx/default.aspx?id={uuid.ToString().ToUpperInvariant()}&re={emitter}&rr={receiver}" +
         $"&tt={total.ToString("0.00####", CultureInfo.InvariantCulture)}&fe={sello[Math.Max(0, sello.Length - 8)..]}";
@@ -117,7 +117,7 @@ public static partial class Cfdi
         return new SvgQRCode(gen.CreateQrCode(text, QRCodeGenerator.ECCLevel.M)).GetGraphic(4);
     }
 
-    /// Comprobante de ingreso con IVA trasladado por partida. Importe e IVA ya vienen redondeados como en Facturacion.Totals.
+    /// Income voucher with VAT charged per line item. Amount and VAT already come rounded as in Facturacion.Totals.
     public static XDocument Build(Company c, Customer r, Invoice inv, IReadOnlyDictionary<Guid, Product> products, Guid? replaces = null)
     {
         var concepts = inv.Lines.OrderBy(l => l.Position).Select(l =>
@@ -138,7 +138,7 @@ public static partial class Cfdi
             new XAttribute("FormaPago", inv.PaymentForm!), new XAttribute("MetodoPago", inv.PaymentMethod!),
             new XAttribute("SubTotal", Money(inv.Subtotal)), new XAttribute("Moneda", c.Currency), new XAttribute("Total", Money(inv.Total)),
             new XAttribute("TipoDeComprobante", "I"), new XAttribute("Exportacion", "01"), new XAttribute("LugarExpedicion", c.ZipCode!),
-            // Sustitución: el nuevo comprobante se relaciona con el que cancela (tipo 04).
+            // Substitution: the new voucher is related to the one it cancels (type 04).
             replaces is Guid old ? new XElement(C + "CfdiRelacionados", new XAttribute("TipoRelacion", "04"),
                 new XElement(C + "CfdiRelacionado", new XAttribute("UUID", old.ToString().ToUpperInvariant()))) : null,
             Emisor(c), Receptor(c, r, r.CfdiUse),
@@ -161,7 +161,7 @@ public static partial class Cfdi
         return new XDocument(new XDeclaration("1.0", "utf-8", null), comprobante);
     }
 
-    /// Reparte un importe con IVA entre las tasas de la factura en proporción a su total; la suma cuadra exacta con el importe.
+    /// Splits an amount including VAT across the invoice's rates in proportion to their total; the sum matches the amount exactly.
     public static List<(decimal Rate, decimal Base, decimal Tax)> Split(Invoice inv, decimal amount)
     {
         var taxes = Taxes(inv);
@@ -177,8 +177,8 @@ public static partial class Cfdi
         return parts;
     }
 
-    /// Nota de crédito (CFDI tipo E) relacionada con la factura (tipo 01), un concepto por tasa de IVA.
-    // forma de pago 17 (compensación) porque la nota se aplica contra el saldo; si se reembolsara se usaría la del reembolso.
+    /// Credit note (CFDI type E) related to the invoice (type 01), one concept per VAT rate.
+    // payment method 17 (offset) because the note is applied against the balance; if it were refunded, the refund's method would be used.
     public static XDocument BuildCredit(Company c, Customer r, Invoice inv, CreditNote n)
     {
         var parts = Split(inv, n.Total);
@@ -209,8 +209,8 @@ public static partial class Cfdi
         return new XDocument(new XDeclaration("1.0", "utf-8", null), comprobante);
     }
 
-    /// Recibo electrónico de pago (CFDI tipo P, complemento Pagos 2.0) de una parcialidad de una factura PPD.
-    /// Los impuestos del pago son proporcionales a lo pagado (ImpPagado / Total).
+    /// Electronic payment receipt (CFDI type P, Payments 2.0 complement) for one installment of a PPD invoice.
+    /// The payment's taxes are proportional to the amount paid (ImpPagado / Total).
     public static XDocument BuildPayment(Company c, Customer r, Invoice inv, int folio, DateTime paidAt, string form,
         decimal amount, decimal balanceBefore, int installment)
     {
@@ -264,7 +264,7 @@ public static partial class Cfdi
 
     public static string Text(XDocument xml) => $"{xml.Declaration}\n{xml.Root}";
 
-    /// Agrega el timbre fiscal. En pruebas el UUID es local y los sellos dicen PRUEBAS.
+    /// Adds the tax stamp. In test mode the UUID is local and the seals say PRUEBAS (test).
     public static (Guid Uuid, DateTime At) Stamp(XDocument xml)
     {
         var uuid = Guid.NewGuid();

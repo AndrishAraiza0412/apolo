@@ -1,10 +1,10 @@
 namespace Apolo.Api;
 
-/// Parámetros de nómina de una empresa. Los valores por omisión son los legales de 2026; cada empresa puede subirlos
-/// (aguinaldo, prima vacacional, pago de horas extra) y todos se actualizan cada enero con el DOF sin tocar código.
-/// Fuentes 2026: tarifa mensual del Anexo 8 RMF 2026 (DOF 28-12-2025), UMA 117.31 (desde el 1 de febrero), subsidio 15.02%
-/// de la UMA mensual hasta $11,492.66 (DOF 31-12-2025), salario mínimo general $315.04 (DOF 09-12-2025), cesantía y vejez
-/// patronal con la tabla 2026 de la reforma de 2020.
+/// Payroll parameters for a company. The defaults are the 2026 legal values; each company can raise them
+/// (year-end bonus, vacation premium, overtime pay) and all are updated every January from the DOF (Official Gazette) without touching code.
+/// 2026 sources: monthly tax table from Annex 8 RMF 2026 (DOF 28-12-2025), UMA (unit of measure and update) 117.31 (since February 1), subsidy 15.02%
+/// of the monthly UMA up to $11,492.66 (DOF 31-12-2025), general minimum wage $315.04 (DOF 09-12-2025), employer old-age and
+/// unemployment contributions (cesantía y vejez) from the 2026 table of the 2020 reform.
 public record PayrollParams
 {
     public record Bracket(decimal Lower, decimal Fixed, decimal Rate);
@@ -15,7 +15,7 @@ public record PayrollParams
     public decimal DaysPerMonth { get; init; } = 30.4m;
     public decimal SubsidyRate { get; init; } = 0.1502m;
     public decimal SubsidyLimit { get; init; } = 11_492.66m;
-    /// Tarifa mensual del art. 96: límite inferior, cuota fija y tasa sobre el excedente. La anual (art. 152) es esta × 12.
+    /// Monthly table from art. 96: lower limit, fixed fee and rate on the excess. The annual one (art. 152) is this × 12.
     public List<Bracket> Tariff { get; init; } =
     [
         new(0.01m, 0m, 0.0192m), new(844.60m, 16.22m, 0.0640m), new(7_168.52m, 420.95m, 0.1088m), new(12_598.03m, 1_011.68m, 0.16m),
@@ -23,7 +23,7 @@ public record PayrollParams
         new(55_736.69m, 10_457.09m, 0.30m), new(106_410.51m, 25_659.23m, 0.32m), new(141_880.67m, 37_009.69m, 0.34m), new(425_642.00m, 133_488.54m, 0.35m),
     ];
 
-    // Prestaciones (mínimos de ley; la empresa puede dar más).
+    // Benefits (legal minimums; the company may give more).
     public decimal AguinaldoDays { get; init; } = 15;
     public decimal VacationPremium { get; init; } = 0.25m;
     public int ExtraVacationDays { get; init; }
@@ -40,22 +40,22 @@ public record PayrollParams
     public decimal VacationPremiumExemptUma { get; init; } = 15;
     public decimal SeveranceExemptUmaPerYear { get; init; } = 90;
 
-    // IMSS: tope del SBC y cuotas obreras.
+    // IMSS: SBC cap and employee contributions.
     public decimal SbcCapUma { get; init; } = 25;
     public decimal WorkerExcessRate { get; init; } = 0.004m;
-    /// Prestaciones en dinero 0.25%, pensionados 0.375%, invalidez y vida 0.625%, cesantía y vejez 1.125%.
+    /// Cash benefits 0.25%, pensioners 0.375%, disability and life 0.625%, old age and unemployment 1.125%.
     public decimal WorkerRate { get; init; } = 0.0025m + 0.00375m + 0.00625m + 0.01125m;
-    /// Art. 36 LSS: en salario mínimo el patrón cubre la cuota obrera.
+    /// Art. 36 LSS: at minimum wage the employer covers the employee contribution.
     public bool EmployerPaysMinWageQuota { get; init; } = true;
 
     // Cuotas patronales.
     public decimal ImssFixedRate { get; init; } = 0.204m;
     public decimal ImssExcessRate { get; init; } = 0.011m;
-    /// Prestaciones en dinero 0.70%, pensionados 1.05%, invalidez y vida 1.75%, guarderías 1%.
+    /// Cash benefits 0.70%, pensioners 1.05%, disability and life 1.75%, daycare 1%.
     public decimal ImssRate { get; init; } = 0.007m + 0.0105m + 0.0175m + 0.01m;
     public decimal RetirementRate { get; init; } = 0.02m;
     public decimal InfonavitRate { get; init; } = 0.05m;
-    /// Cesantía y vejez por SBC en veces la UMA; hasta un salario mínimo aplica MinWageCesantiaRate.
+    /// Old age and unemployment by SBC in multiples of the UMA; up to one minimum wage MinWageCesantiaRate applies.
     public decimal MinWageCesantiaRate { get; init; } = 0.0315m;
     public List<CesantiaStep> Cesantia { get; init; } =
     [
@@ -63,12 +63,12 @@ public record PayrollParams
         new(3.50m, 0.06361m), new(4.00m, 0.06613m), new(9_999m, 0.07513m),
     ];
 
-    /// Prima de riesgo de trabajo; vive en Company.RiskPremium y se copia aquí al cargar.
+    /// Occupational risk premium; it lives in Company.RiskPremium and is copied here on load.
     public decimal RiskPremium { get; init; } = 0.0054355m;
 
     public static readonly PayrollParams Default = new();
 
-    /// Errores de captura; vacío si los parámetros son usables.
+    /// Input errors; empty if the parameters are usable.
     public List<string> Validate()
     {
         var e = new List<string>();
@@ -91,19 +91,19 @@ public record PayrollParams
     }
 }
 
-/// Cálculo fiscal de la nómina: ISR (art. 96 LISR) con subsidio para el empleo, cuotas obreras y patronales del IMSS,
-/// horas extra, aguinaldo, PTU, prima vacacional, finiquito y ajuste anual. Todo con los parámetros de la empresa.
-// faltas e incapacidades descuentan los días cotizados completos (el art. 31 LSS mantiene enfermedad y maternidad
-// hasta 7 faltas por mes); la opción del art. 174 RLISR para pagos extraordinarios no se modela.
+/// Payroll tax calculation: ISR (art. 96 LISR) with employment subsidy, IMSS employee and employer contributions,
+/// overtime, year-end bonus, PTU, vacation premium, severance and annual adjustment. All using the company's parameters.
+// absences and sick leave deduct the full contributed days (art. 31 LSS keeps sickness and maternity
+// up to 7 absences per month); the art. 174 RLISR option for extraordinary payments is not modeled.
 public static class Nomina
 {
-    // Atajos con los parámetros 2026 (pruebas y referencias rápidas).
+    // Shortcuts with the 2026 parameters (tests and quick references).
     public static decimal Uma => PayrollParams.Default.Uma;
     public static decimal MinWage => PayrollParams.Default.MinWage;
 
     static decimal Round(decimal x) => Math.Round(x, 2, MidpointRounding.AwayFromZero);
 
-    /// ISR del periodo: la tarifa mensual se ajusta a los días pagados (días / días por mes).
+    /// ISR for the period: the monthly table is adjusted to the days paid (days / days per month).
     public static decimal Isr(decimal gross, decimal days, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;
@@ -113,7 +113,7 @@ public static class Nomina
         return Round(Math.Max(0, (gross - row.Lower * k) * row.Rate + row.Fixed * k));
     }
 
-    /// Subsidio para el empleo del periodo, si el ingreso mensualizado no pasa del límite. Nunca excede el ISR (no se paga en efectivo).
+    /// Employment subsidy for the period, if the monthly-equivalent income does not exceed the limit. It never exceeds the ISR (it is not paid in cash).
     public static decimal Subsidy(decimal gross, decimal days, decimal isr, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;
@@ -121,15 +121,15 @@ public static class Nomina
         return Math.Min(isr, Round(p.SubsidyRate * p.Uma * days));
     }
 
-    /// Días de vacaciones por año de servicio (art. 76 LFT, reforma 2023) más los extra que dé la empresa.
+    /// Vacation days per year of service (art. 76 LFT, 2023 reform) plus any extra the company gives.
     public static int VacationDays(int year, PayrollParams? p = null) =>
         (year <= 5 ? 10 + 2 * year : 20 + 2 * (int)Math.Ceiling((year - 5) / 5m)) + (p ?? PayrollParams.Default).ExtraVacationDays;
 
-    /// Año de servicio en curso (1 durante el primer año).
+    /// Current year of service (1 during the first year).
     public static int ServiceYear(DateOnly? hireDate, DateOnly at) =>
         hireDate is DateOnly h ? Math.Max(1, (at.DayNumber - h.DayNumber) / 365 + 1) : 1;
 
-    /// Salario base de cotización: sueldo diario × factor de integración (aguinaldo y prima vacacional), con tope en UMA.
+    /// Base contribution salary (SBC): daily wage × integration factor (year-end bonus and vacation premium), capped in UMA.
     public static decimal Sbc(decimal dailySalary, DateOnly? hireDate, DateOnly at, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;
@@ -142,7 +142,7 @@ public static class Nomina
     static decimal WorkerQuota(decimal sbc, decimal days, PayrollParams p) =>
         Round((Math.Max(0, sbc - 3 * p.Uma) * p.WorkerExcessRate + sbc * p.WorkerRate) * days);
 
-    /// Cuotas obreras: excedente de 3 UMA más la tasa sobre el SBC. En salario mínimo las cubre el patrón (van en Employer).
+    /// Employee contributions: excess over 3 UMA plus the rate on the SBC. At minimum wage the employer covers them (they go in Employer).
     public static decimal Imss(decimal sbc, decimal days, PayrollParams? p = null, decimal dailySalary = 0)
     {
         p ??= PayrollParams.Default;
@@ -150,8 +150,8 @@ public static class Nomina
         return WorkerQuota(sbc, days, p);
     }
 
-    /// Horas extra (art. 67-68 LFT) sobre la hora de sueldo diario / jornada. Exento (art. 93-I LISR): una parte de las dobles hasta
-    /// un tope en UMA por semana del periodo; en salario mínimo las dobles son exentas completas. Las triples gravan.
+    /// Overtime (art. 67-68 LFT) on the hourly rate of daily wage / working day. Exempt (art. 93-I LISR): part of the double-time hours up to
+    /// a cap in UMA per week of the period; at minimum wage double-time hours are fully exempt. Triple-time hours are taxed.
     public static (decimal Pay, decimal Exempt) Overtime(decimal dailySalary, decimal days, decimal doubleHours, decimal tripleHours, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;
@@ -162,7 +162,7 @@ public static class Nomina
         return (pay, dailySalary <= p.MinWage ? doubles : Math.Min(Round(doubles * p.OvertimeExemptShare), p.OvertimeExemptUmaPerWeek * p.Uma * weeks));
     }
 
-    /// Prima vacacional de los días de vacaciones gozados; exenta hasta el tope en UMA.
+    /// Vacation premium on the vacation days taken; exempt up to the cap in UMA.
     public static (decimal Pay, decimal Exempt) VacationPremiumPay(decimal dailySalary, decimal vacationDays, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;
@@ -170,7 +170,7 @@ public static class Nomina
         return (pay, Math.Min(pay, p.VacationPremiumExemptUma * p.Uma));
     }
 
-    /// ISR de un pago extraordinario (aguinaldo, PTU): la parte gravada se suma al sueldo mensual y se toma la diferencia de la tarifa.
+    /// ISR on an extraordinary payment (year-end bonus, PTU): the taxable portion is added to the monthly wage and the difference in the table is taken.
     public static decimal IsrExtraordinary(decimal taxable, decimal dailySalary, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;
@@ -179,7 +179,7 @@ public static class Nomina
         return Isr(monthly + taxable, p.DaysPerMonth, p) - Isr(monthly, p.DaysPerMonth, p);
     }
 
-    /// Días trabajados en el año calendario entre ingreso y baja (o la fecha de corte).
+    /// Days worked in the calendar year between hire and termination (or the cut-off date).
     public static int DaysWorked(DateOnly? hire, DateOnly? termination, int year, DateOnly? until = null)
     {
         var start = hire is DateOnly h && h.Year == year ? h : new DateOnly(year, 1, 1);
@@ -188,7 +188,7 @@ public static class Nomina
         return Math.Max(0, end.DayNumber - start.DayNumber + 1);
     }
 
-    /// Días de aguinaldo proporcionales (art. 87 LFT) por los días trabajados en el año calendario.
+    /// Prorated year-end bonus days (art. 87 LFT) for the days worked in the calendar year.
     public static decimal AguinaldoDays(DateOnly? hireDate, int year, PayrollParams? p = null, DateOnly? until = null)
     {
         p ??= PayrollParams.Default;
@@ -210,8 +210,8 @@ public static class Nomina
         public decimal Total => Imss + Rcv + Infonavit;
     }
 
-    /// Cuotas patronales del periodo: IMSS (cuota fija sobre la UMA, excedente de 3 UMA, tasas sobre el SBC y riesgo de trabajo),
-    /// RCV (retiro y cesantía por tabla) e INFONAVIT. En salario mínimo el IMSS incluye la cuota obrera que absorbe el patrón.
+    /// Employer contributions for the period: IMSS (fixed fee on the UMA, excess over 3 UMA, rates on the SBC and occupational risk),
+    /// RCV (retirement and unemployment by table) and INFONAVIT. At minimum wage the IMSS includes the employee contribution the employer absorbs.
     public static EmployerQuotas Employer(decimal sbc, decimal days, decimal riskRate, PayrollParams? p = null, decimal dailySalary = 0)
     {
         p ??= PayrollParams.Default;
@@ -221,13 +221,13 @@ public static class Nomina
         return new(Round(imss * days) + absorbed, Round(sbc * (p.RetirementRate + CesantiaRate(sbc, p)) * days), Round(sbc * p.InfonavitRate * days));
     }
 
-    /// Un concepto del finiquito: importe y parte exenta; Separation marca los pagos por separación (indemnización, antigüedad).
+    /// A severance concept: amount and exempt portion; Separation marks separation payments (indemnity, seniority).
     public record Concept(string Name, decimal Amount, decimal Exempt, bool Separation = false);
 
-    /// Finiquito (renuncia) y liquidación (despido injustificado, art. 48-50 y 162 LFT): salario pendiente, aguinaldo y vacaciones
-    /// proporcionales con su prima; en liquidación, 3 meses, 20 días por año y prima de antigüedad (12 días por año con salario
-    /// topado al doble del mínimo). En renuncia la prima de antigüedad solo con 15 años o más.
-    // vacaciones proporcionales del año de servicio en curso; saldos de años anteriores se capturan como días pendientes.
+    /// Severance (resignation) and settlement (unjustified dismissal, art. 48-50 and 162 LFT): pending salary, prorated year-end bonus and vacation
+    /// with their premium; for a settlement, 3 months, 20 days per year of service and seniority premium (12 days per year with salary
+    /// capped at twice the minimum). On resignation the seniority premium applies only with 15 years or more.
+    // prorated vacation for the current year of service; balances from previous years are entered as pending days.
     public static List<Concept> Settlement(decimal daily, DateOnly? hire, DateOnly end, bool unjustified, decimal pendingDays,
         decimal pendingVacation, PayrollParams? p = null)
     {
@@ -251,15 +251,15 @@ public static class Nomina
             list.Add(new("20 días por año", Round(20 * daily * years), 0, true));
         }
         if (unjustified || years >= 15) list.Add(new("Prima de antigüedad", Round(12 * Math.Min(daily, 2 * p.MinWage) * years), 0, true));
-        // Pagos por separación: exentos hasta 90 UMA por año de servicio (art. 93-XIII LISR), repartido en proporción.
+        // Separation payments: exempt up to 90 UMA per year of service (art. 93-XIII LISR), distributed proportionally.
         var separation = list.Where(c => c.Separation).Sum(c => c.Amount);
         var cap = p.SeveranceExemptUmaPerYear * p.Uma * Math.Ceiling(years);
         return list.Where(c => c.Amount > 0)
             .Select(c => c.Separation ? c with { Exempt = Round(Math.Min(separation, cap) * c.Amount / separation) } : c).ToList();
     }
 
-    /// ISR del finiquito: lo ordinario gravado como pago extraordinario; la separación gravada a la tasa efectiva del último
-    /// sueldo mensual ordinario (art. 96, penúltimo párrafo LISR).
+    /// ISR on severance: the taxable ordinary part as an extraordinary payment; the taxable separation part at the effective rate of the last
+    /// ordinary monthly wage (art. 96, penultimate paragraph LISR).
     public static decimal SettlementIsr(List<Concept> concepts, decimal daily, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;
@@ -270,9 +270,9 @@ public static class Nomina
         return IsrExtraordinary(ordinary, daily, p) + Round(separation * rate);
     }
 
-    /// Cálculo anual (art. 97 y 152 LISR): ISR de la tarifa anual sobre el ingreso gravado del año menos el ISR de las nóminas.
-    /// Positivo: se retiene la diferencia; negativo: saldo a favor del trabajador.
-    // el ISR de cada nómina se toma antes del subsidio (el subsidio acreditado cuenta como ISR cubierto); confirmar con el contador.
+    /// Annual calculation (art. 97 and 152 LISR): ISR from the annual table on the year's taxable income minus the ISR from the payroll runs.
+    /// Positive: the difference is withheld; negative: balance in favor of the worker.
+    // each payroll run's ISR is taken before the subsidy (the credited subsidy counts as ISR paid); confirm with the accountant.
     public static decimal AnnualAdjustment(decimal taxableYear, decimal isrYear, PayrollParams? p = null)
     {
         p ??= PayrollParams.Default;

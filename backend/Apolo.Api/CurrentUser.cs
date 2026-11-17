@@ -2,6 +2,7 @@ using System.Security.Claims;
 
 namespace Apolo.Api;
 
+/// The authenticated user and company of the current request, read from the session claims. AppDb uses it to filter reads and stamp writes by company (DESIGN.md §9).
 public class CurrentUser
 {
     public const string CompanyClaim = "company";

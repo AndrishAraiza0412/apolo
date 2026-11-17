@@ -15,7 +15,7 @@ import Reportes from './Reportes'
 
 const GROUPS = ['General', 'Operación', 'Finanzas', 'Sistema']
 
-// Fase en la que se construye cada módulo (DESIGN.md §11).
+// Phase in which each module is built (DESIGN.md §11).
 const PHASE: Record<string, number> = {
   dashboard: 2, ia: 2, ventas: 2, facturacion: 2, inventario: 2,
   compras: 3, proyectos: 3, contabilidad: 4, rrhh: 4, reportes: 4,
@@ -76,7 +76,7 @@ function Login({ onDone }: { onDone: () => void }) {
   )
 }
 
-// Instalación vacía: alta de la empresa y de su primer usuario (rol Gerencia) con el token que define quien despliega.
+// Empty installation: creation of the company and its first user (Gerencia role) with the token set by whoever deploys.
 function Setup({ onDone }: { onDone: () => void }) {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState(false)

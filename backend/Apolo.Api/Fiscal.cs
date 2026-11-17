@@ -5,15 +5,15 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Apolo.Api;
 
-/// Contabilidad electrónica (Anexo 24: catálogo y balanza 1.3) y cierre del ejercicio.
-// se generan los XML sin sellar; el envío al buzón tributario lo hace el contador con su e.firma.
+/// Electronic accounting (Annex 24: chart of accounts and trial balance 1.3) and fiscal year closing.
+// the XML files are generated unsigned; the accountant sends them to the SAT tax mailbox with their e.firma (electronic signature).
 public static class Fiscal
 {
     static readonly XNamespace Cat = "http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/CatalogoCuentas";
     static readonly XNamespace Bce = "http://www.sat.gob.mx/esquemas/ContabilidadE/1_3/BalanzaComprobacion";
     static string Money(decimal x) => x.ToString("0.00", CultureInfo.InvariantCulture);
 
-    /// Cuentas con movimiento (o saldo) en el periodo que aún no tienen código agrupador.
+    /// Accounts with movement (or balance) in the period that do not yet have a grouping code.
     public static List<string> Missing(IEnumerable<Account> accounts, IEnumerable<Contabilidad.AccountBalance> balances)
     {
         var used = balances.Where(b => b.Opening != 0 || b.Debit != 0 || b.Credit != 0).Select(b => b.Id).ToHashSet();
@@ -36,7 +36,7 @@ public static class Fiscal
                 new XAttribute("NumCta", b.Code), new XAttribute("SaldoIni", Money(b.Opening)), new XAttribute("Debe", Money(b.Debit)),
                 new XAttribute("Haber", Money(b.Credit)), new XAttribute("SaldoFin", Money(b.Closing))))));
 
-    /// Póliza de cierre al 31 de diciembre: salda ingresos y gastos contra el resultado del ejercicio y bloquea el periodo.
+    /// Closing entry at December 31: settles income and expenses against the year's result and locks the period.
     public static async Task<string?> CloseAsync(AppDb db, Guid companyId, int year)
     {
         var company = await db.Companies.SingleAsync(c => c.Id == companyId);
@@ -45,11 +45,11 @@ public static class Fiscal
         if (end >= DateOnly.FromDateTime(DateTime.Today)) return "Solo se cierran ejercicios terminados.";
         var results = (await Contabilidad.BalancesAsync(db, new DateOnly(year, 1, 1), end))
             .Where(b => b.Type is "ingreso" or "gasto" && b.Closing != 0).ToList();
-        // Cada cuenta de resultados se lleva a cero; la diferencia (utilidad o pérdida) va al capital.
+        // Each income-statement account is taken to zero; the difference (profit or loss) goes to equity.
         var lines = results.Select(b => (b.Code, Debit: b.Type == "ingreso" ? b.Closing : 0, Credit: b.Type == "gasto" ? b.Closing : 0)).ToList();
         var profit = lines.Sum(l => l.Debit) - lines.Sum(l => l.Credit);
         lines.Add((Contabilidad.ResultadoEjercicio, Math.Max(0, -profit), Math.Max(0, profit)));
-        // Una cuenta con saldo contrario a su naturaleza queda negativa: se invierte el lado.
+        // An account with a balance opposite to its nature ends up negative: the side is flipped.
         var fixedLines = lines.Select(l => l.Debit < 0 || l.Credit < 0 ? (l.Code, -l.Credit, -l.Debit) : l).ToArray();
         await Contabilidad.PostAsync(db, companyId, end, "diario", $"Cierre del ejercicio {year}", "cierre", null, fixedLines);
         company.ClosedThrough = end;
@@ -57,7 +57,7 @@ public static class Fiscal
         return null;
     }
 
-    /// Reabre el último ejercicio cerrado: borra su póliza de cierre.
+    /// Reopens the last closed fiscal year: deletes its closing entry.
     public static async Task<string?> ReopenAsync(AppDb db, Guid companyId, int year)
     {
         var company = await db.Companies.SingleAsync(c => c.Id == companyId);

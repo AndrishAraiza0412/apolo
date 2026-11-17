@@ -71,7 +71,7 @@ Single image (`Dockerfile`): the API also serves the interface. `deploy/` has a 
 - **Backups.** Daily, in `deploy/backups/apolo-AAAAMMDD-HHMMSS.dump`, kept for 30 days (`BACKUP_KEEP_DAYS`). Copy that folder off the server (S3, another disk). To restore:
   `docker compose stop api && docker compose exec -T db pg_restore -U apolo -d apolo --clean --if-exists < backups/ARCHIVO.dump && docker compose start api`.
 - **Updating:** `git pull && docker compose up -d --build`. Back up first: migrations are automatic.
-- **Security** (details and ISO 27001 / SOC 2 mapping in [docs/seguridad.md](docs/seguridad.md)):
+- **Security** (details and ISO 27001 / SOC 2 mapping in [docs/security.md](docs/security.md)):
   - 15-minute lockout after 5 failed attempts.
   - Passwords of 12+ characters with letters and numbers.
   - Sessions are revoked when the password or role changes, or when the user is deactivated.

@@ -6,10 +6,10 @@ namespace Apolo.Api;
 public record ObligationPayRequest(DateOnly Date, decimal? Amount = null);
 public record CoefficientRequest(decimal ProfitCoefficient);
 
-/// Obligaciones por enterar: retenciones (ISR y cuotas obreras), cuotas patronales IMSS/RCV/INFONAVIT e IVA neto.
-/// Pagarlas genera la póliza de egreso que salda el pasivo contra bancos.
-// el IVA se toma devengado (208 al facturar, 118 al recibir compras); el SAT lo pide sobre flujo de efectivo.
-// Para separarlo harían falta cuentas de IVA pendiente de cobro y de pago, traspasadas en cada cobro y pago.
+/// Obligations to remit: withholdings (ISR and employee contributions), employer IMSS/RCV/INFONAVIT contributions and net VAT.
+/// Paying them generates the disbursement journal entry that settles the liability against bank.
+// VAT is taken on an accrual basis (208 when invoicing, 118 when receiving purchases); the SAT requires it on a cash basis.
+// Separating it would need pending-collection and pending-payment VAT accounts, transferred on each collection and payment.
 public static class Impuestos
 {
     public record Obligation(string Kind, string Label, decimal Balance, decimal Credit, decimal Due);
@@ -31,10 +31,10 @@ public static class Impuestos
 
     public record Provisional(bool Applies, decimal Income, decimal Coefficient, decimal Profit, decimal Isr, decimal Paid, decimal Withheld, decimal Due);
 
-    /// ISR provisional de persona moral (LISR 14): ingresos nominales acumulados × coeficiente de utilidad × 30%,
-    /// menos pagos provisionales del ejercicio e ISR que retuvieron los clientes.
-    // persona física (tarifa del art. 106) y RESICO no se calculan; la pérdida fiscal y la PTU pagada no se restan.
-    // Los pagos cuentan en el año en que se hacen: el de diciembre pagado en enero se descuenta del ejercicio siguiente.
+    /// Provisional ISR for a legal entity (LISR 14): accumulated nominal income × profit coefficient × 30%,
+    /// minus the year's provisional payments and the ISR that customers withheld.
+    // individuals (art. 106 table) and RESICO are not calculated; tax loss and PTU paid are not subtracted.
+    // Payments count in the year they are made: December's paid in January is deducted from the following year.
     public static async Task<Provisional> ProvisionalAsync(AppDb db, DateOnly at)
     {
         var company = await db.Companies.SingleOrDefaultAsync(c => c.Id == db.CompanyId);
@@ -56,8 +56,8 @@ public static class Impuestos
         return new(true, income, company.ProfitCoefficient, profit, isr, paid, withheld, Math.Max(0, isr - paid - withheld));
     }
 
-    /// Pago parcial o total de retenciones y cuotas. El IVA se liquida completo: el acreditable se compensa contra el trasladado
-    /// y se paga la diferencia; si el acreditable es mayor, el remanente queda como saldo a favor en la 118.
+    /// Partial or full payment of withholdings and contributions. VAT is settled in full: creditable VAT is offset against VAT charged
+    /// and the difference is paid; if creditable VAT is larger, the remainder stays as a balance in favor in account 118.
     public static async Task<string?> PayAsync(AppDb db, Guid companyId, string kind, ObligationPayRequest req)
     {
         var o = (await ObligationsAsync(db, req.Date)).FirstOrDefault(x => x.Kind == kind);
@@ -66,7 +66,7 @@ public static class Impuestos
         var concept = $"Pago {o.Label.ToLowerInvariant()}";
         if (kind == "iva")
         {
-            // Se compensa primero con el IVA retenido por clientes y después con el acreditable.
+            // It is offset first against the VAT withheld by customers and then against creditable VAT.
             var b = (await Contabilidad.BalancesAsync(db, DateOnly.MinValue, req.Date)).ToDictionary(x => x.Code, x => x.Closing);
             var retained = Math.Min(o.Balance, Math.Max(0, b.GetValueOrDefault(Contabilidad.IvaRetenidoClientes)));
             var offset = Math.Min(o.Balance - retained, Math.Max(0, b.GetValueOrDefault(Contabilidad.IvaAcreditable)));

@@ -14,14 +14,14 @@ namespace Apolo.Api;
 public record ChatTurn(string Role, string Text);
 public record ChatRequest(List<ChatTurn> Messages);
 
-/// Apolo IA (DESIGN.md §4): Claude con herramientas filtradas por rol. Las consultas leen con el filtro de empresa;
-/// los borradores solo crean una AgentAction pendiente que una persona aprueba.
+/// Apolo IA (DESIGN.md §4): Claude with tools filtered by role. Queries read with the company filter;
+/// drafts only create a pending AgentAction that a person approves.
 public static class Ia
 {
     const string ModelId = "claude-opus-5-5";
     static readonly JsonSerializerOptions Json = new() { PropertyNamingPolicy = JsonNamingPolicy.SnakeCaseLower, PropertyNameCaseInsensitive = true, Converters = { new FechaOpcional() } };
 
-    /// Un modelo local a veces manda "" en una fecha opcional: cuenta como no enviada. Otro valor inválido se le regresa para que lo corrija.
+    /// A local model sometimes sends "" for an optional date: it counts as not sent. Any other invalid value is returned to it so it can correct it.
     public class FechaOpcional : JsonConverter<DateOnly?>
     {
         public override DateOnly? Read(ref Utf8JsonReader reader, System.Type type, JsonSerializerOptions options)
@@ -39,7 +39,7 @@ public static class Ia
         }
     }
 
-    /// Un modelo local a veces responde sin contenido. La llamada se repite antes de ejecutar herramientas, así que no duplica propuestas.
+    /// A local model sometimes answers with no content. The call is repeated before running tools, so it does not duplicate proposals.
     public static async Task<T> RetryEmpty<T>(Func<Task<T>> call, int retries = 2)
     {
         for (var attempt = 0; ; attempt++)
@@ -49,7 +49,7 @@ public static class Ia
         }
     }
 
-    // Los totales los calcula el sistema: el modelo se equivoca al sumar y al comparar.
+    // The system computes the totals: the model gets sums and comparisons wrong.
     public record FilaCartera(string Folio, string Cliente, decimal Total, DateOnly? Vence, int DiasVencida);
     public record Cartera(decimal TotalPorCobrar, decimal TotalVencido, List<string> ClientesConVencidas, List<FilaCartera> Facturas);
     public static Cartera ResumirCartera(List<FilaCartera> filas) => new(
@@ -67,34 +67,34 @@ public static class Ia
         filas.Where(f => f.CierreEsperado is not null).MinBy(f => f.CierreEsperado),
         filas);
 
-    // USD por millón de tokens (entrada, salida), precios de la API de Claude a octubre de 2026. Actualizar si cambian.
+    // USD per million tokens (input, output), Claude API prices as of October 2026. Update if they change.
     static readonly Dictionary<string, (decimal Input, decimal Output)> Precios = new()
     {
         ["claude-opus-5-5"] = (4m, 20m),
         ["claude-sonnet-5-5"] = (2m, 10m),
         ["claude-haiku-5-5"] = (0.10m, 0.50m),
     };
-    static readonly (decimal Input, decimal Output) PrecioDesconocido = (10m, 50m); // el más alto: un modelo sin precio no debe saltarse el límite
+    static readonly (decimal Input, decimal Output) PrecioDesconocido = (10m, 50m); // the highest: a model without a price must not skip the limit
     const decimal LimiteMensualUsd = 50m;
 
-    /// sin caché de prompts no hay tokens de caché que cobrar, y un respaldo de modelo se cobra al precio del principal; desglosar si se activan.
+    /// without prompt caching there are no cache tokens to charge, and a fallback model is charged at the primary's price; break these out if they are enabled.
     public static decimal Costo(string model, bool local, long input, long output)
     {
-        if (local) return 0m; // modelo propio con Anthropic:BaseUrl: no hay factura por token
+        if (local) return 0m; // own model via Anthropic:BaseUrl: no per-token bill
         var p = Precios.GetValueOrDefault(model, PrecioDesconocido);
         return (input * p.Input + output * p.Output) / 1_000_000m;
     }
 
     static DateTime InicioDelMes() => new(DateTime.UtcNow.Year, DateTime.UtcNow.Month, 1, 0, 0, 0, DateTimeKind.Utc);
 
-    /// se revisa antes de cada ronda, así que consultas simultáneas pueden rebasar un poco el límite; usar un contador atómico si importa.
+    /// checked before each round, so simultaneous queries may exceed the limit slightly; use an atomic counter if it matters.
     public static Task<decimal> GastoDelMes(AppDb db)
     {
         var desde = InicioDelMes();
         return db.AgentUsages.Where(u => u.CreatedAt >= desde).SumAsync(u => u.CostUsd);
     }
 
-    // Qué cubre cada herramienta, para decirle al modelo lo que este rol no puede ver.
+    // What each tool covers, to tell the model what this role cannot see.
     static readonly Dictionary<string, string> Temas = new()
     {
         ["consultar_ventas"] = "ventas y facturación",
@@ -118,7 +118,7 @@ public static class Ia
     record Herramienta(string Name, string[] Modules, string Description, object Properties, string[] Required,
         Func<AppDb, ClaimsPrincipal, JsonElement, Task<object>> Run);
 
-    // Parámetros de las herramientas (snake_case en el JSON que manda el modelo).
+    // Tool parameters (snake_case in the JSON the model sends).
     record VentasArgs(int? Meses);
     record CarteraArgs(string? Cliente);
     record ReporteArgs(string Reporte, DateOnly? Desde, DateOnly? Hasta);
@@ -129,12 +129,12 @@ public static class Ia
     record PartidaOc(string Sku, decimal Cantidad, decimal? CostoUnitario);
     record OcArgs(string Proveedor, List<PartidaOc> Partidas, string? Notas);
 
-    /// Error que se le regresa al modelo para que corrija o lo explique; no es una falla del servidor.
+    /// Error returned to the model so it corrects itself or explains it; it is not a server failure.
     class ToolError(string message) : Exception(message);
 
     static readonly CultureInfo Mx = CultureInfo.GetCultureInfo("es-MX");
     static string? Key(IConfiguration c) => c["Anthropic:ApiKey"] is { Length: > 0 } k ? k : Environment.GetEnvironmentVariable("ANTHROPIC_API_KEY");
-    // En desarrollo apunta a un modelo local: Ollama acepta el mismo formato de mensajes e ignora los campos propios de Claude.
+    // In development it points to a local model: Ollama accepts the same message format and ignores Claude-specific fields.
     static AnthropicClient Client(IConfiguration c, string key) => c["Anthropic:BaseUrl"] is { Length: > 0 } url
         ? new AnthropicClient { ApiKey = key, BaseUrl = url }
         : new AnthropicClient { ApiKey = key };
@@ -352,7 +352,7 @@ public static class Ia
             }),
     ];
 
-    /// Busca por nombre exacto y, si no, por coincidencia parcial única. Ambigüedad = error para que el modelo pregunte.
+    /// Looks up by exact name and, failing that, by a single partial match. Ambiguity = error so the model asks.
     static async Task<T> Unique<T>(IQueryable<T> q, System.Linq.Expressions.Expression<Func<T, string>> name, string text, string noun) where T : class
     {
         var all = await q.ToListAsync();
@@ -380,7 +380,7 @@ public static class Ia
 
     static string ModuleFor(string kind) => kind == "factura" ? "facturacion" : "compras";
 
-    /// Crea el borrador real con las mismas validaciones del módulo. Los datos pudieron cambiar desde la propuesta.
+    /// Creates the real draft with the same validations as the module. The data may have changed since the proposal.
     static async Task<(Guid? Id, string? Error)> ApplyAsync(AppDb db, AgentAction a)
     {
         if (a.Kind == "factura")
@@ -405,7 +405,7 @@ public static class Ia
         }
     }
 
-    /// Aprobar crea el borrador y marca la propuesta en el mismo SaveChanges: no hay propuesta aprobada sin borrador.
+    /// Approving creates the draft and marks the proposal in the same SaveChanges: there is no approved proposal without a draft.
     public static async Task<string?> DecideAsync(AppDb db, AgentAction a, bool approve, Guid? userId)
     {
         if (a.Status != "pendiente") return "Esta propuesta ya se resolvió.";
@@ -432,7 +432,7 @@ public static class Ia
             Tools = ToolsFor(user).Select(t => new { t.Name, t.Description, Writes = t.Name.StartsWith("crear_") }),
         });
 
-        // El consumo del mes y las últimas consultas: solo quien administra la empresa.
+        // Monthly usage and the latest queries: only whoever administers the company.
         g.MapGet("/usage", async (AppDb db, IConfiguration config) =>
         {
             var desde = InicioDelMes();
@@ -495,7 +495,7 @@ public static class Ia
 
             try
             {
-                // tope de 8 rondas de herramientas por mensaje; subir si las preguntas reales lo necesitan.
+                // cap of 8 tool rounds per message; raise it if real questions need it.
                 for (var round = 0; round < 8; round++)
                 {
                     if (round > 0 && spent + usage.CostUsd >= limit)
@@ -512,7 +512,7 @@ public static class Ia
                             MaxTokens = 16000,
                             System = system,
                             OutputConfig = new BetaOutputConfig { Effort = Effort.Medium },
-                            // Si un clasificador rechaza la petición, la atiende el modelo de respaldo en la misma llamada.
+                            // If a classifier rejects the request, the fallback model handles it in the same call.
                             Betas = ["server-side-fallback-2026-07-01"],
                             Fallbacks = new Default(),
                             Tools = tools.Select(t => (BetaToolUnion)new BetaTool
@@ -527,7 +527,7 @@ public static class Ia
                             }).ToList(),
                             Messages = messages,
                         });
-                        _ = r.Content; // el SDK valida al leer: aquí aparece el content: null
+                        _ = r.Content; // the SDK validates on read: this is where content: null shows up
                         return r;
                     });
 
@@ -585,7 +585,7 @@ public static class Ia
             {
                 return Results.Problem("Apolo IA está saturado. Intenta en un minuto.", statusCode: 429);
             }
-            // InvalidData: un modelo local puede responder sin contenido (content: null).
+            // InvalidData: a local model may answer with no content (content: null).
             catch (Exception ex) when (ex is AnthropicApiException or AnthropicInvalidDataException)
             {
                 log.CreateLogger("Ia").LogError(ex, "Error de la API del modelo");
@@ -603,7 +603,7 @@ public static class Ia
                 var logger = log.CreateLogger("Ia");
                 logger.LogInformation("Apolo IA {Outcome}: {Model}, {Rounds} rondas, {InputTokens}+{OutputTokens} tokens, {CostUsd} USD, {DurationMs} ms",
                     usage.Outcome, model, usage.Rounds, usage.InputTokens, usage.OutputTokens, usage.CostUsd, usage.DurationMs);
-                // Un fallo al registrar no debe cambiar la respuesta que el usuario ya tiene.
+                // A failure to record must not change the response the user already has.
                 try
                 {
                     db.AgentUsages.Add(usage);
@@ -630,7 +630,7 @@ public static class Ia
             return rows;
         });
 
-        // Aprobar exige permiso sobre el módulo del borrador, además de "ia". La bitácora guarda quién aprobó.
+        // Approving requires permission on the draft's module, in addition to "ia". The audit log stores who approved.
         g.MapPost("/actions/{id:guid}/{decision:regex(^(approve|reject)$)}", async (Guid id, string decision, AppDb db, ClaimsPrincipal user, CurrentUser me) =>
         {
             var a = await db.AgentActions.SingleOrDefaultAsync(x => x.Id == id);

@@ -3,6 +3,7 @@ using Apolo.Api.Data;
 
 namespace Apolo.Tests;
 
+/// Session security: the session version changes with password, role, modules or deactivation, and the password policy requires length, letters and digits.
 public class SeguridadTests
 {
     [Fact]

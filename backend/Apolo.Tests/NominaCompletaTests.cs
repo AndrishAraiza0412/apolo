@@ -30,7 +30,7 @@ public class NominaCompletaTests
         await UseParams(PayrollParams.Default with { AguinaldoDays = 30, DoubleFactor = 3 });
         var p = await Rrhh.ParamsAsync(db);
         Assert.Equal((30m, 3m, 0.0054355m), (p.AguinaldoDays, p.DoubleFactor, p.RiskPremium));
-        Assert.Equal(1_125m * 1.5m, Nomina.Overtime(500m, 15m, 9m, 0m, p).Pay);           // 9 horas × 62.50 × 3
+        Assert.Equal(1_125m * 1.5m, Nomina.Overtime(500m, 15m, 9m, 0m, p).Pay);           // 9 hours × 62.50 × 3
         Assert.Equal(30m, Nomina.AguinaldoDays(null, 2026, p));
         Assert.NotEmpty((PayrollParams.Default with { AguinaldoDays = 10, VacationPremium = 0.1m }).Validate());   // abajo de la ley
     }
@@ -44,9 +44,9 @@ public class NominaCompletaTests
         var l = run!.Lines.Single();
         (l.Absences, l.SickDays, l.VacationDays) = (2, 1, 5);
         Rrhh.Recalculate(run, PayrollParams.Default);
-        // 12 días pagados (6,000) + prima vacacional 5 × 500 × 25% = 625, exenta hasta 15 UMA.
+        // 12 days paid (6,000) + vacation premium 5 × 500 × 25% = 625, exempt up to 15 UMA.
         Assert.Equal((6_625m, 625m, 625m), (l.Gross, l.VacationPremium, l.Exempt));
-        Assert.Equal(Nomina.Imss(l.Sbc, 12m), l.Imss);                                      // cotizan 12 días
+        Assert.Equal(Nomina.Imss(l.Sbc, 12m), l.Imss);                                      // 12 days contribute
         Assert.Equal(Nomina.Employer(l.Sbc, 12m, PayrollParams.Default.RiskPremium).Total, l.Employer);
     }
 
@@ -72,13 +72,13 @@ public class NominaCompletaTests
         l.Concepts = JsonSerializer.Serialize(Nomina.Settlement(500, ana.HireDate, run.EndDate, true, 10, 0), new JsonSerializerOptions(JsonSerializerDefaults.Web));
         Rrhh.Recalculate(run, PayrollParams.Default);
 
-        // Año de servicio 4 (18 días): 6.02 días proporcionales; aguinaldo 7.44 días; 3 meses 45,000; 20 días × 3.337 años; antigüedad 12 × 500 × 3.337.
+        // Year of service 4 (18 days): 6.02 prorated days; year-end bonus 7.44 days; 3 months 45,000; 20 days × 3.337 years; seniority 12 × 500 × 3.337.
         Assert.Equal(
             [("Salario pendiente", 5_000m), ("Aguinaldo proporcional", 3_720m), ("Vacaciones (6.02 días)", 3_010m), ("Prima vacacional", 752.50m),
              ("Indemnización de 3 meses", 45_000m), ("20 días por año", 33_369.86m), ("Prima de antigüedad", 20_021.92m)],
             Rrhh.Concepts(l).Select(x => (x.Name, x.Amount)));
         Assert.Equal(110_874.28m, l.Gross);
-        Assert.Equal(6_989.01m, l.Isr);   // ordinario 8,210.70 como extraordinario + separación gravada 56,160.18 a la tasa efectiva
+        Assert.Equal(6_989.01m, l.Isr);   // ordinary 8,210.70 as extraordinary + taxable separation 56,160.18 at the effective rate
 
         await db.SaveChangesAsync();
         Assert.Null(await Rrhh.PayAsync(db, run.Id));
@@ -91,7 +91,7 @@ public class NominaCompletaTests
         var ana = new Employee { Name = "Ana", DailySalary = 500 };
         var beto = new Employee { Name = "Beto", DailySalary = 500, Active = false, TerminationDate = new DateOnly(2025, 6, 30) };
         db.Employees.AddRange(ana, beto);
-        // Ana recibió 150,000 de PTU en 2023-2025: su tope es el mayor entre 90 días (45,000) y el promedio (50,000).
+        // Ana received 150,000 of PTU in 2023-2025: her cap is the larger of 90 days (45,000) and the average (50,000).
         foreach (var y in new[] { 2023, 2024, 2025 })
             db.PayrollRuns.Add(new PayrollRun { Kind = "ptu", Status = "pagada", StartDate = new DateOnly(y, 5, 29), EndDate = new DateOnly(y, 5, 29),
                 Lines = [new() { EmployeeId = ana.Id, Gross = 50_000 }] });
@@ -100,8 +100,8 @@ public class NominaCompletaTests
         Assert.Null(error);
         Assert.Equal(2, run!.Lines.Count);
         Assert.Equal(181, run.Lines.Single(l => l.EmployeeId == beto.Id).Days);              // 1 de enero al 30 de junio de 2025
-        Assert.Equal(45_000m, run.Lines.Single(l => l.EmployeeId == beto.Id).Gross);        // tope de 90 días de salario
-        Assert.Equal(50_000m, run.Lines.Single(l => l.EmployeeId == ana.Id).Gross);         // tope por promedio de tres años
+        Assert.Equal(45_000m, run.Lines.Single(l => l.EmployeeId == beto.Id).Gross);        // cap of 90 salary days
+        Assert.Equal(50_000m, run.Lines.Single(l => l.EmployeeId == ana.Id).Gross);         // cap by three-year average
     }
 
     [Fact]

@@ -18,7 +18,7 @@ public static class Rrhh
     static decimal Round(decimal x) => Math.Round(x, 2, MidpointRounding.AwayFromZero);
     static readonly JsonSerializerOptions Json = new(JsonSerializerDefaults.Web);
 
-    /// Ingreso anual por arriba del cual el trabajador presenta su propia declaración (art. 98-III-e LISR).
+    /// Annual income above which the worker files their own return (art. 98-III-e LISR).
     public const decimal AnnualDeclarationLimit = 400_000m;
 
     static Dictionary<string, string[]> Validate(EmployeeRequest r)
@@ -41,7 +41,7 @@ public static class Rrhh
         x.TerminationDate = r.TerminationDate;
     }
 
-    /// Parámetros de la empresa de la sesión con su prima de riesgo; sin empresa (pruebas), los legales vigentes.
+    /// Parameters of the session's company with its risk premium; without a company (tests), the current legal ones.
     public static async Task<PayrollParams> ParamsAsync(AppDb db)
     {
         var c = await db.Companies.Where(x => x.Id == db.CompanyId).Select(x => new { x.PayrollJson, x.RiskPremium }).SingleOrDefaultAsync();
@@ -78,7 +78,7 @@ public static class Rrhh
                     l.Isr = Nomina.SettlementIsr(concepts, l.DailySalary, p);
                     break;
                 default:
-                    // La PTU se reparte al crear la nómina; el aguinaldo son días × sueldo diario.
+                    // PTU is distributed when the payroll run is created; the year-end bonus is days × daily wage.
                     if (run.Kind == "aguinaldo") l.Gross = Round(l.Days * l.DailySalary);
                     l.Exempt = Nomina.ExtraordinaryExempt(run.Kind, l.Gross, p);
                     l.Isr = Nomina.IsrExtraordinary(l.Gross - l.Exempt, l.DailySalary, p);
@@ -96,17 +96,17 @@ public static class Rrhh
     public static List<Nomina.Concept> Concepts(PayrollLine l) =>
         l.Concepts is null ? [] : JsonSerializer.Deserialize<List<Nomina.Concept>>(l.Concepts, Json) ?? [];
 
-    /// Recalcula los conceptos del finiquito con la fecha de baja (EndDate), días de salario pendientes (Days) y vacaciones
-    /// pendientes de años anteriores (VacationDays).
+    /// Recalculates the severance concepts from the termination date (EndDate), pending salary days (Days) and pending vacation
+    /// from previous years (VacationDays).
     static void Settle(PayrollRun run, PayrollLine l, DateOnly? hire, PayrollParams p) =>
         l.Concepts = JsonSerializer.Serialize(Nomina.Settlement(l.DailySalary, hire, run.EndDate, run.Cause == "despido", l.Days, l.VacationDays, p), Json);
 
-    /// Borrador de nómina. Sueldo diario y SBC se congelan al crearlo.
-    /// Ordinaria: los activos con los días del periodo. Aguinaldo: días proporcionales al año de la fecha de pago (EndDate).
-    /// PTU: el monto se reparte 50% por días y 50% por salarios del año anterior, incluidas las bajas de ese año; tope del mayor entre
-    /// los días de salario configurados y el promedio de PTU de los últimos tres años (art. 127-VIII LFT).
-    /// Finiquito: un empleado, con la causa y la fecha de baja.
-    // el remanente por tope de PTU no se redistribuye.
+    /// Payroll draft. Daily wage and SBC are frozen when it is created.
+    /// Ordinary: active employees with the days of the period. Year-end bonus: days prorated to the year of the payment date (EndDate).
+    /// PTU: the amount is split 50% by days and 50% by the previous year's salaries, including that year's terminations; capped at the larger of
+    /// the configured salary days and the average PTU of the last three years (art. 127-VIII LFT).
+    /// Severance: one employee, with the cause and the termination date.
+    // the remainder left over by the PTU cap is not redistributed.
     public static async Task<(PayrollRun? Run, string? Error)> CreateAsync(AppDb db, DateOnly start, DateOnly end, string kind = "ordinaria",
         decimal? ptuAmount = null, Guid? employeeId = null, string? cause = null)
     {
@@ -169,7 +169,7 @@ public static class Rrhh
         return (run, null);
     }
 
-    /// Paga la nómina y genera su póliza; el finiquito además da de baja al empleado.
+    /// Pays the payroll run and generates its journal entry; a severance also terminates the employee.
     public static async Task<string?> PayAsync(AppDb db, Guid id, DateTime? paidAt = null)
     {
         var relational = db.Database.IsRelational();
@@ -194,8 +194,8 @@ public static class Rrhh
 
     public record AnnualRow(Guid EmployeeId, string Employee, bool Eligible, string? Reason, decimal Taxable, decimal Isr, decimal Annual, decimal Adjustment);
 
-    /// Cálculo anual de cada empleado con las nóminas pagadas del año (art. 97 LISR). No aplica a quien no trabajó el año completo
-    /// (ingresó después del 1 de enero o salió antes del 1 de diciembre) ni a quien pasó de $400,000: ellos declaran por su cuenta.
+    /// Annual calculation for each employee with the year's paid payroll runs (art. 97 LISR). It does not apply to anyone who did not work the whole year
+    /// (hired after January 1 or left before December 1) or whose income exceeded $400,000: they file on their own.
     public static async Task<List<AnnualRow>> AnnualAsync(AppDb db, int year)
     {
         var p = await ParamsAsync(db);
@@ -247,7 +247,7 @@ public static class Rrhh
 
         var p = app.MapGroup("/api/payroll").RequireAuthorization("rrhh");
 
-        // Parámetros de nómina de la empresa: GET devuelve los vigentes (o los legales), PUT los valida y guarda; DELETE vuelve a los legales.
+        // Company payroll parameters: GET returns the current ones (or the legal ones), PUT validates and saves them; DELETE goes back to the legal ones.
         p.MapGet("/settings", async (AppDb db) => new { Params = await ParamsAsync(db), Defaults = PayrollParams.Default });
 
         p.MapPut("/settings", async (PayrollParams req, AppDb db, CurrentUser me) =>
@@ -278,7 +278,7 @@ public static class Rrhh
 
         p.MapGet("/annual/{year:int}", (int year, AppDb db) => AnnualAsync(db, year));
 
-        // Lleva la diferencia del cálculo anual a una nómina ordinaria en borrador (normalmente la última del año).
+        // Carries the annual calculation difference into a draft ordinary payroll run (normally the last of the year).
         p.MapPost("/annual/{year:int}/apply/{runId:guid}", async (int year, Guid runId, AppDb db) =>
         {
             var run = await db.PayrollRuns.Include(r => r.Lines).SingleOrDefaultAsync(r => r.Id == runId);
@@ -303,7 +303,7 @@ public static class Rrhh
             return Results.Ok(new
             {
                 r.Id, FolioText = FolioText(r.Folio), r.Kind, r.Cause, r.StartDate, r.EndDate, r.Status, r.PaidAt, r.Gross, r.Deductions, r.Net, r.EmployerCost,
-                // Desglose con los parámetros vigentes; en una nómina pagada el total congelado es EmployerCost.
+                // Breakdown with the current parameters; in a paid payroll run the frozen total is EmployerCost.
                 Employer = new { Imss = quotas.Sum(q => q.Imss), Rcv = quotas.Sum(q => q.Rcv), Infonavit = quotas.Sum(q => q.Infonavit), prm.RiskPremium },
                 Lines = r.Lines.OrderBy(l => names[l.EmployeeId]).Select(l => new
                 {

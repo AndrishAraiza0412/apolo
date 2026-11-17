@@ -9,8 +9,8 @@ public record MovementRequest(string Kind, decimal Quantity, string? Note);
 
 public static class Inventario
 {
-    /// Registra un movimiento sin dejar la existencia negativa. Devuelve el mensaje de error o null.
-    /// El producto debe existir en la empresa del usuario (lo valida quien llama).
+    /// Records a movement without leaving stock negative. Returns the error message or null.
+    /// The product must exist in the user's company (the caller validates this).
     public static async Task<string?> RegisterAsync(AppDb db, Guid productId, string kind, decimal quantity, string? note)
     {
         decimal? delta = kind switch
@@ -23,9 +23,9 @@ public static class Inventario
         if (delta is null) return "Tipo o cantidad inválidos.";
 
         var relational = db.Database.IsRelational();
-        // Si ya hay transacción (p. ej. al emitir una factura) se une a ella; si no, abre la suya.
+        // If a transaction already exists (e.g. when issuing an invoice) it joins it; otherwise it opens its own.
         await using var tx = relational && db.Database.CurrentTransaction is null ? await db.Database.BeginTransactionAsync() : null;
-        // Bloquea la fila del producto: dos salidas simultáneas no pueden leer la misma existencia.
+        // Locks the product row: two simultaneous outbound movements cannot read the same stock.
         if (relational) await db.Database.ExecuteSqlAsync($"SELECT 1 FROM \"Products\" WHERE \"Id\" = {productId} FOR UPDATE");
 
         var stock = await Stock(db, productId);

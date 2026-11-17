@@ -39,7 +39,7 @@ public static class Compras
         (po.Subtotal, po.Tax, po.Total) = Facturacion.Totals(po.Lines.Select(l => (l.Quantity, l.UnitCost, l.TaxRate)));
     }
 
-    /// Cambia de estado bajo bloqueo de fila; `act` corre dentro de la misma transacción. Devuelve el error o null.
+    /// Changes state under a row lock; `act` runs inside the same transaction. Returns the error or null.
     static async Task<string?> Transition(AppDb db, Guid id, Func<PurchaseOrder, Task<string?>> act)
     {
         var relational = db.Database.IsRelational();
@@ -63,8 +63,8 @@ public static class Compras
         return null;
     });
 
-    /// Recepción completa: toda la mercancía entra al inventario y el costo del producto pasa a ser el último pagado.
-    // sin recepciones parciales; agregar cantidad recibida por partida cuando un proveedor entregue en varias exhibiciones.
+    /// Full receipt: all goods enter inventory and the product's cost becomes the last price paid.
+    // no partial receipts; add a received quantity per line item when a supplier delivers in several shipments.
     public static Task<string?> ReceiveAsync(AppDb db, Guid id) => Transition(db, id, async po =>
     {
         if (po.Status != "enviada") return "Solo se reciben órdenes enviadas.";
@@ -79,7 +79,7 @@ public static class Compras
         return null;
     });
 
-    /// Abono al proveedor (o pago del saldo si no se indica monto) con su póliza de egreso; queda pagada al cubrir el total.
+    /// Payment to the supplier (or payment of the balance if no amount is given) with its disbursement journal entry; it becomes paid once it covers the total.
     public static Task<string?> PayAsync(AppDb db, Guid id, DateTime? paidAt = null, decimal? amount = null) => Transition(db, id, async po =>
     {
         if (po.Status != "recibida") return "Solo se pagan órdenes recibidas.";
@@ -159,7 +159,7 @@ public static class Compras
             return rows.Select(o => new { o.Id, FolioText = FolioText(o.Folio), o.Status, o.SentAt, o.ReceivedAt, o.PaidAt, o.Total, Balance = o.Status == "recibida" ? o.Total - o.Paid : 0, o.Supplier });
         });
 
-        // Lo que necesita el formulario. Compras no requiere permiso de Inventario.
+        // What the form needs. Purchasing does not require the Inventory permission.
         g.MapGet("/catalog", async (AppDb db) => new
         {
             Suppliers = await db.Suppliers.Where(x => x.Active).OrderBy(x => x.Name).Select(x => new { x.Id, x.Name }).ToListAsync(),
@@ -177,7 +177,7 @@ public static class Compras
             {
                 o.Id, FolioText = FolioText(o.Folio), o.SupplierId, o.Status, o.SentAt, o.ReceivedAt, o.PaidAt,
                 o.Subtotal, o.Tax, o.Total, o.Paid, Balance = o.Status == "recibida" ? o.Total - o.Paid : 0, o.Notes,
-                // Los abonos son sus pólizas de egreso.
+                // The payments are their disbursement journal entries.
                 Payments = await db.JournalEntries.Where(e => e.Source == "compra" && e.SourceId == o.Id && e.Kind == "egreso")
                     .OrderBy(e => e.Date).Select(e => new { e.Date, Amount = e.Lines.Sum(l => l.Debit) }).ToListAsync(),
                 Lines = o.Lines.OrderBy(l => l.Position).Select(l => new { l.ProductId, l.Quantity, l.UnitCost, l.TaxRate }),

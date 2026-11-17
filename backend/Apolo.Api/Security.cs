@@ -9,7 +9,7 @@ public static partial class Security
     [GeneratedRegex(@"<script>(.*?)</script>", RegexOptions.Singleline)]
     private static partial Regex InlineScript();
 
-    /// Hashes CSP ('sha256-…') de los scripts en línea de index.html, para no tener que permitir 'unsafe-inline'.
+    /// CSP hashes ('sha256-…') of the inline scripts in index.html, so 'unsafe-inline' does not have to be allowed.
     public static string InlineScriptHashes(string? webRoot)
     {
         var index = webRoot is null ? null : Path.Combine(webRoot, "index.html");

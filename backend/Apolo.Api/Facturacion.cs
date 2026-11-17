@@ -15,7 +15,7 @@ public static class Facturacion
 
     static decimal Round(decimal x) => Math.Round(x, 2, MidpointRounding.AwayFromZero);
 
-    /// Importe e IVA redondeados por partida, luego se suman.
+    /// Amount and VAT rounded per line item, then summed.
     public static (decimal Subtotal, decimal Tax, decimal Total) Totals(IEnumerable<InvoiceLine> lines) =>
         Totals(lines.Select(l => (l.Quantity, l.UnitPrice, l.TaxRate)));
 
@@ -69,7 +69,7 @@ public static class Facturacion
             if (s is null) db.FolioSequences.Add(s = new FolioSequence { Kind = kind });
             return ++s.LastNumber;
         }
-        // Un solo statement atómico: dos emisiones simultáneas nunca obtienen el mismo número.
+        // A single atomic statement: two simultaneous issues never get the same number.
         var id = Guid.CreateVersion7();
         var rows = await db.Database.SqlQuery<int>($"""
             INSERT INTO "FolioSequences" ("Id", "CompanyId", "Kind", "LastNumber", "CreatedAt", "UpdatedAt")
@@ -81,7 +81,7 @@ public static class Facturacion
         return rows.Single();
     }
 
-    /// Asigna folio, da salida al inventario y fija vencimiento. Todo o nada. Devuelve el error o null.
+    /// Assigns folio, issues stock out of inventory and sets the due date. All or nothing. Returns the error or null.
     public static async Task<string?> EmitAsync(AppDb db, Guid id)
     {
         var relational = db.Database.IsRelational();
@@ -97,7 +97,7 @@ public static class Facturacion
         var cfdi = company is not null && Cfdi.Enabled(company);
         if (cfdi && Cfdi.Validate(company!, customer) is { Count: > 0 } problems) return string.Join(" ", problems);
 
-        // Sustitución: primero se cancela la original (regresa su mercancía y revierte sus pólizas), luego se emite la nueva.
+        // Substitution: the original is cancelled first (its goods return and its journal entries are reversed), then the new one is issued.
         Invoice? replaced = null;
         if (inv.ReplacesId is Guid oldId)
         {
@@ -118,7 +118,7 @@ public static class Facturacion
         inv.Status = "emitida";
         inv.IssuedAt = DateTime.UtcNow;
         inv.DueDate = DateOnly.FromDateTime(DateTime.Today).AddDays(customer.CreditDays);
-        // A crédito: pago en parcialidades o diferido (PPD, forma 99). De contado: una exhibición por transferencia.
+        // On credit: payment in installments or deferred (PPD, method 99). Cash: a single payment by transfer.
         inv.PaymentMethod = customer.CreditDays > 0 ? "PPD" : "PUE";
         inv.PaymentForm = customer.CreditDays > 0 ? "99" : "03";
         var withheld = Cfdi.Withholdings(company, customer, inv.Lines);
@@ -140,7 +140,7 @@ public static class Facturacion
         return null;
     }
 
-    /// Una factura emitida devuelve su mercancía al inventario. Las pagadas no se cancelan. Una timbrada necesita motivo del SAT.
+    /// An issued invoice returns its goods to inventory. Paid ones cannot be cancelled. A stamped one needs a SAT reason.
     public static async Task<string?> CancelAsync(AppDb db, Guid id, string? reason = null)
     {
         var relational = db.Database.IsRelational();
@@ -173,7 +173,7 @@ public static class Facturacion
         inv.CancelReason = reason;
     }
 
-    /// Borrador nuevo con el contenido de una factura timbrada; al emitirlo, la original se cancela con motivo 01.
+    /// New draft with the content of a stamped invoice; when issued, the original is cancelled with reason 01.
     public static async Task<(Guid? Id, string? Error)> SubstituteAsync(AppDb db, Guid id)
     {
         var inv = await db.Invoices.Include(i => i.Lines).SingleOrDefaultAsync(i => i.Id == id);
@@ -187,8 +187,8 @@ public static class Facturacion
         return (copy.Id, null);
     }
 
-    /// Abono (o cobro total si no se indica monto) con su póliza de ingreso, bajo bloqueo para no contabilizar dos veces.
-    /// En una factura PPD timbrada cada abono lleva su recibo electrónico de pago.
+    /// Payment (or full collection if no amount is given) with its income journal entry, under a lock to avoid posting twice.
+    /// On a stamped PPD invoice each payment carries its electronic payment receipt.
     public static async Task<string?> PayAsync(AppDb db, Guid id, DateTime? paidAt = null, decimal? amount = null)
     {
         var relational = db.Database.IsRelational();
@@ -223,8 +223,8 @@ public static class Facturacion
         return null;
     }
 
-    /// Nota de crédito por devolución o descuento sobre una factura emitida, hasta su saldo. Timbrada si la factura lo está.
-    // la devolución no regresa mercancía al inventario (se registra aparte con una entrada) y las notas no se cancelan.
+    /// Credit note for a return or discount on an issued invoice, up to its balance. Stamped if the invoice is.
+    // the return does not send goods back to inventory (it is recorded separately with an inbound movement) and credit notes cannot be cancelled.
     public static async Task<(Guid? Id, string? Error)> CreditAsync(AppDb db, Guid id, decimal amount, string kind, string? reason)
     {
         if (!CreditNote.Kinds.Contains(kind)) return (null, "Tipo de nota inválido.");
@@ -236,7 +236,7 @@ public static class Facturacion
         var inv = await db.Invoices.Include(i => i.Lines).SingleOrDefaultAsync(i => i.Id == id);
         if (inv is null) return (null, "Factura no encontrada.");
         if (inv.Status != "emitida") return (null, "Solo se emiten notas de crédito sobre facturas por cobrar.");
-        // la nota sobre una factura con retenciones tendría que devolver la parte proporcional de ISR e IVA retenidos.
+        // a note on an invoice with withholdings would have to return the proportional part of the withheld ISR and VAT.
         if (inv.IsrWithheld + inv.IvaWithheld > 0) return (null, "Las facturas con retenciones se corrigen cancelando y sustituyendo.");
         var balance = inv.Total - inv.Paid - inv.Credited;
         amount = Round(amount);
@@ -283,7 +283,7 @@ public static class Facturacion
             });
         });
 
-        // Lo que necesita el formulario. Facturación no requiere permiso de Inventario ni de Ventas.
+        // What the form needs. Invoicing does not require the Inventory or Sales permission.
         g.MapGet("/catalog", async (AppDb db) => new
         {
             Customers = await db.Customers.Where(c => c.Active).OrderBy(c => c.Name)
@@ -363,7 +363,7 @@ public static class Facturacion
                 ? Results.File(System.Text.Encoding.UTF8.GetBytes(x.Xml!), "application/xml", $"{FolioText(x.Folio)}_{x.Uuid}.xml")
                 : Results.NotFound());
 
-        // Datos para la representación impresa.
+        // Data for the printed representation.
         g.MapGet("/{id:guid}/print", async (Guid id, AppDb db) =>
         {
             var i = await db.Invoices.Include(x => x.Lines).SingleOrDefaultAsync(x => x.Id == id && x.Status != "borrador");

@@ -2,8 +2,8 @@ namespace Apolo.Api;
 
 public record Module(string Code, string Name, string Group);
 
-/// Catálogo de módulos (DESIGN.md §2). Cada código es también una política de autorización;
-/// qué roles ven qué módulos vive en la base de datos (Role.Modules), no aquí.
+/// Module catalog (DESIGN.md §2). Each code is also an authorization policy;
+/// which roles see which modules lives in the database (Role.Modules), not here.
 public static class Modules
 {
     public const string ClaimType = "mod";

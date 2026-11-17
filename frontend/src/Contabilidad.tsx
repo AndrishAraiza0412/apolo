@@ -236,7 +236,7 @@ function Balanza({ money }: { money: Intl.NumberFormat }) {
 function Estados({ money }: { money: Intl.NumberFormat }) {
   const [range, setRange] = useState({ from: yearStart, to: iso(now) })
   const period = useBalances(range.from, range.to)
-  // El balance general es a la fecha final y acumula todo lo anterior.
+  // The balance sheet is as of the end date and accumulates everything before it.
   const all = useBalances('2000-01-01', range.to)
   const movement = (r: Balance) => r.closing - r.opening
   const of = (rows: Balance[], type: string) => rows.filter(r => r.type === type)
@@ -341,7 +341,7 @@ function Cuentas({ accounts, onChanged }: { accounts: Account[]; onChanged: () =
 type Cash = { current: number; forecast: { month: string; balance: number }[]; items: { concept: string; amount: number }[]; assumptions: string[] }
 const monthLong = new Intl.DateTimeFormat('es-MX', { month: 'long', year: 'numeric', timeZone: 'UTC' })
 
-// El cálculo es del servicio de pronósticos; aquí solo se muestra con sus supuestos a la vista.
+// The calculation comes from the forecasting service; here it is only shown with its assumptions visible.
 function Pronostico({ money }: { money: Intl.NumberFormat }) {
   const [c, setC] = useState<Cash | null>(null)
   useEffect(() => { api<Cash>('/forecast/cash').then(setC) }, [])
@@ -394,7 +394,7 @@ type Suggestion = { kind: string; id: string; label: string; amount: number; alr
 type BankTx = { id: string; date: string; description: string; reference: string | null; amount: number; status: string; matchKind: string | null; suggestions: Suggestion[] }
 const BANK_STATUS: Record<string, string> = { pendiente: 'Pendientes', conciliado: 'Conciliados', ignorado: 'Ignorados', '': 'Todos' }
 
-// Estado de cuenta en CSV: cada depósito o retiro se liga a una factura, orden de compra o nómina del mismo importe.
+// Bank statement as CSV: each deposit or withdrawal is linked to an invoice, purchase order or payroll run of the same amount.
 function Bancos({ money }: { money: Intl.NumberFormat }) {
   const [rows, setRows] = useState<BankTx[]>([])
   const [status, setStatus] = useState('pendiente')
@@ -529,7 +529,7 @@ function Obligaciones({ money }: { money: Intl.NumberFormat }) {
 
 type Provisional = { applies: boolean; income: number; coefficient: number; profit: number; isr: number; paid: number; withheld: number; due: number }
 
-// Contabilidad electrónica (XML de catálogo y balanza), ISR provisional y cierre del ejercicio.
+// Electronic accounting (chart of accounts and trial balance XML), provisional ISR and fiscal year closing.
 function Sat({ money }: { money: Intl.NumberFormat }) {
   const [period, setPeriod] = useState(iso(now).slice(0, 7))
   const [prov, setProv] = useState<Provisional | null>(null)

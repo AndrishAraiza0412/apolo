@@ -221,7 +221,7 @@ function RunEditor({ id, money, onClose, onChanged, onDeleted }: { id: string; m
       vacationDays: l.vacationDays, absences: l.absences, sickDays: l.sickDays,
     })),
   })
-  // ISR e IMSS los calcula el servidor: al salir de un campo se guarda y se recalcula.
+  // The server calculates ISR and IMSS: leaving a field saves it and recalculates.
   const recalc = () => run_('save', save)
   const num = (i: number, k: NumKey, label: string, max?: number, step = '0.5') => (
     <td><input className="num" type="number" min="0" max={max} step={step} value={lines[i][k]} disabled={!draft}
@@ -396,7 +396,7 @@ type Bracket = { lower: number; fixed: number; rate: number }
 type Step = { upToUma: number; rate: number }
 type Params = Record<string, number | boolean | Bracket[] | Step[]> & { tariff: Bracket[]; cesantia: Step[] }
 
-// [clave, etiqueta, unidad]; '%' se captura en porcentaje.
+// [key, label, unit]; '%' is entered as a percentage.
 const FIELDS: { title: string; fields: [string, string, string][] }[] = [
   { title: 'Valores oficiales', fields: [['uma', 'UMA diaria', '$'], ['minWage', 'Salario mínimo diario', '$'], ['daysPerMonth', 'Días por mes', 'días'], ['subsidyRate', 'Subsidio para el empleo', '% UMA'], ['subsidyLimit', 'Límite mensual del subsidio', '$']] },
   { title: 'Prestaciones de la empresa', fields: [['aguinaldoDays', 'Días de aguinaldo', 'días'], ['vacationPremium', 'Prima vacacional', '%'], ['extraVacationDays', 'Días extra de vacaciones', 'días'], ['hoursPerDay', 'Jornada diaria', 'h'], ['doubleFactor', 'Pago hora doble', '×'], ['tripleFactor', 'Pago hora triple', '×'], ['ptuCapDays', 'Tope de PTU', 'días']] },

@@ -3,6 +3,6 @@ import react from '@vitejs/plugin-react'
 
 export default defineConfig({
   plugins: [react()],
-  // Mismo origen para la cookie de sesión (SameSite=Strict).
+  // Same origin for the session cookie (SameSite=Strict).
   server: { proxy: { '/api': 'http://localhost:5080' } },
 })

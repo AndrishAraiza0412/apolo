@@ -54,7 +54,7 @@ public class FacturacionTests
         Assert.Equal("emitida", a.Status);
         Assert.Equal(DateOnly.FromDateTime(DateTime.Today).AddDays(30), a.DueDate);
         Assert.Equal(5, await Inventario.Stock(db, p.Id));
-        Assert.NotNull(await Facturacion.EmitAsync(db, a.Id)); // no se emite dos veces
+        Assert.NotNull(await Facturacion.EmitAsync(db, a.Id)); // it is not issued twice
     }
 
     [Fact]

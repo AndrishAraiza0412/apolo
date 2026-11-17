@@ -30,7 +30,7 @@ public class IaTests
         var c = new Customer { Name = "Cliente" };
         db.Customers.Add(c);
         await db.SaveChangesAsync();
-        Assert.Empty(db.Invoices); // proponer no crea nada
+        Assert.Empty(db.Invoices); // proposing creates nothing
 
         var a = await Proposal(c.Id);
         var approver = Guid.NewGuid();
@@ -39,7 +39,7 @@ public class IaTests
         var inv = await db.Invoices.SingleAsync();
         Assert.Equal((a.ResultId, "borrador", 232m), (inv.Id, inv.Status, inv.Total));
         Assert.Equal(("aprobada", approver), (a.Status, a.DecidedBy));
-        Assert.NotNull(await Ia.DecideAsync(db, a, true, approver)); // no se aprueba dos veces
+        Assert.NotNull(await Ia.DecideAsync(db, a, true, approver)); // it is not approved twice
         Assert.Single(db.Invoices);
     }
 
@@ -50,7 +50,7 @@ public class IaTests
         db.Customers.Add(c);
         await db.SaveChangesAsync();
         var a = await Proposal(c.Id);
-        c.Active = false; // el cliente se dio de baja después de la propuesta
+        c.Active = false; // the customer was removed after the proposal
         await db.SaveChangesAsync();
 
         Assert.NotNull(await Ia.DecideAsync(db, a, true, Guid.NewGuid()));

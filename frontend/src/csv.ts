@@ -1,3 +1,4 @@
+// Downloads a report table as a CSV file (all fields quoted, with a UTF-8 BOM so Excel reads accents correctly).
 export type Column = { key: string; label: string; type: 'text' | 'money' | 'number' }
 export type Table = { title: string; columns: Column[]; rows: Record<string, string | number | null>[] }
 

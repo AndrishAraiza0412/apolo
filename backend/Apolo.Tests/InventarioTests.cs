@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace Apolo.Tests;
 
+/// Inventory movements: stock is the sum of movements, never goes negative, and invalid kinds or quantities are rejected.
 public class InventarioTests
 {
     readonly AppDb db = new(

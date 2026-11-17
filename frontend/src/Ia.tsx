@@ -25,15 +25,15 @@ const KIND: Record<string, { label: string; to: string }> = {
 const STATUS: Record<string, string> = { pendiente: '', aprobada: 'ok', rechazada: 'muted-pill' }
 const when = new Intl.DateTimeFormat('es-MX', { dateStyle: 'medium', timeStyle: 'short' })
 
-// La API espera que la conversación empiece con el usuario.
-// solo los últimos 20 turnos; resumir el historial si las conversaciones se alargan.
+// The API expects the conversation to start with the user.
+// only the last 20 turns; summarize the history if conversations get long.
 function trim(turns: Turn[]) {
   const recent = turns.slice(-20)
   while (recent[0]?.role === 'assistant') recent.shift()
   return recent
 }
 
-// La conversación vive mientras la pestaña está abierta y se comparte entre el panel y la pantalla completa.
+// The conversation lives while the tab is open and is shared between the side panel and the full screen.
 let history: Turn[] = []
 
 function useTools() {
@@ -195,7 +195,7 @@ export default function Ia() {
   )
 }
 
-/// Botón flotante y panel lateral, disponibles desde cualquier módulo.
+/// Floating button and side panel, available from any module.
 export function Copilot() {
   const [open, setOpen] = useState(false)
   const tools = useTools()

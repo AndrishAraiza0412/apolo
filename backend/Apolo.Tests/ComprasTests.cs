@@ -25,7 +25,7 @@ public class ComprasTests
     public async Task Receive_adds_stock_and_updates_cost_only_after_sending()
     {
         var (po, p) = await Draft();
-        Assert.NotNull(await Compras.ReceiveAsync(db, po.Id)); // un borrador no se recibe
+        Assert.NotNull(await Compras.ReceiveAsync(db, po.Id)); // a draft is not received
         Assert.Equal(0, await Inventario.Stock(db, p.Id));
 
         Assert.Null(await Compras.SendAsync(db, po.Id));
@@ -34,8 +34,8 @@ public class ComprasTests
 
         Assert.Equal(8, await Inventario.Stock(db, p.Id));
         Assert.Equal(62.5m, p.Cost);
-        Assert.NotNull(await Compras.ReceiveAsync(db, po.Id)); // no se recibe dos veces
-        Assert.NotNull(await Compras.CancelAsync(db, po.Id));  // recibida ya no se cancela
+        Assert.NotNull(await Compras.ReceiveAsync(db, po.Id)); // it is not received twice
+        Assert.NotNull(await Compras.CancelAsync(db, po.Id));  // once received it can no longer be cancelled
     }
 
     [Fact]

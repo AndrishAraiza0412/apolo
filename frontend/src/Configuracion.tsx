@@ -114,7 +114,7 @@ function Bitacora() {
 
 type Company = { name: string; rfc: string | null; legalName: string | null; taxRegime: string | null; zipCode: string | null; riskPremium: number }
 
-// Con RFC la empresa factura electrónicamente (CFDI 4.0); sin RFC las facturas son documentos internos.
+// With an RFC the company invoices electronically (CFDI 4.0); without an RFC invoices are internal documents.
 function Empresa() {
   const sat = useSat()
   const [c, setC] = useState<Company | null>(null)

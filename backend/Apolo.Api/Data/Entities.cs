@@ -1,6 +1,6 @@
 namespace Apolo.Api.Data;
 
-/// created_at / updated_at / created_by los llena AppDb al guardar (DESIGN.md §9).
+/// created_at / updated_at / created_by are filled in by AppDb on save (DESIGN.md §9).
 public abstract class Entity
 {
     public Guid Id { get; set; } = Guid.CreateVersion7();
@@ -9,7 +9,7 @@ public abstract class Entity
     public Guid? CreatedBy { get; set; }
 }
 
-/// Todo lo que pertenece a una empresa. AppDb filtra lecturas y valida escrituras por la empresa del usuario.
+/// Everything that belongs to a company. AppDb filters reads and validates writes by the user's company.
 public abstract class CompanyEntity : Entity
 {
     public Guid CompanyId { get; set; }
@@ -19,18 +19,18 @@ public class Company : Entity
 {
     public required string Name { get; set; }
     public string Currency { get; set; } = "MXN";
-    // Datos del emisor del CFDI. Sin RFC la empresa factura sin timbrar (documento interno).
+    // CFDI issuer data. Without an RFC the company invoices without stamping (internal document).
     public string? Rfc { get; set; }
     public string? LegalName { get; set; }
     public string? TaxRegime { get; set; }
     public string? ZipCode { get; set; }
-    /// Prima de riesgo de trabajo del IMSS (fracción). Una empresa nueva cotiza con la prima media de su clase; clase I = 0.54355%.
+    /// IMSS occupational risk premium (fraction). A new company contributes at the average premium for its class; class I = 0.54355%.
     public decimal RiskPremium { get; set; } = 0.0054355m;
-    /// Parámetros de nómina de la empresa (PayrollParams en JSON); vacío = valores legales vigentes.
+    /// Company payroll parameters (PayrollParams as JSON); empty = current legal values.
     public string? PayrollJson { get; set; }
-    /// Coeficiente de utilidad de la última declaración anual (persona moral) para el ISR provisional.
+    /// Profit coefficient from the last annual return (legal entity) for provisional ISR.
     public decimal ProfitCoefficient { get; set; }
-    /// Último día del ejercicio cerrado: no se aceptan pólizas con fecha igual o anterior.
+    /// Last day of the closed fiscal year: journal entries dated on or before it are not accepted.
     public DateOnly? ClosedThrough { get; set; }
 }
 
@@ -51,12 +51,12 @@ public class User : CompanyEntity
     public Role Role { get; set; } = null!;
     public string? Theme { get; set; }
     public bool Active { get; set; } = true;
-    /// Intentos fallidos seguidos; al quinto la cuenta se bloquea 15 minutos.
+    /// Consecutive failed attempts; on the fifth the account is locked for 15 minutes.
     public int FailedLogins { get; set; }
     public DateTime? LockedUntil { get; set; }
 }
 
-/// Bitácora de auditoría: una fila por alta/cambio/baja. CreatedAt = cuándo, CreatedBy = quién.
+/// Audit log: one row per create/update/delete. CreatedAt = when, CreatedBy = who.
 public class AuditEntry : CompanyEntity
 {
     public required string Action { get; set; }
@@ -78,7 +78,7 @@ public class Product : CompanyEntity
     public bool Active { get; set; } = true;
 }
 
-/// Inmutable. La existencia de un producto es la suma de Quantity (entradas +, salidas −), nunca un campo editable.
+/// Immutable. A product's stock is the sum of Quantity (inbound +, outbound −), never an editable field.
 public class Customer : CompanyEntity
 {
     public required string Name { get; set; }
@@ -87,7 +87,7 @@ public class Customer : CompanyEntity
     public string? Phone { get; set; }
     public int CreditDays { get; set; }
     public bool Active { get; set; } = true;
-    // Datos del receptor del CFDI 4.0.
+    // CFDI 4.0 recipient data.
     public string? TaxRegime { get; set; }
     public string? ZipCode { get; set; }
     public string CfdiUse { get; set; } = "G03";
@@ -105,7 +105,7 @@ public class Opportunity : CompanyEntity
     public Guid? OwnerId { get; set; }
 }
 
-/// Borrador → emitida → pagada, o cancelada. "Vencida" no se guarda: es emitida con DueDate pasada.
+/// Draft → issued → paid, or cancelled. "Overdue" is not stored: it is issued with a past DueDate.
 public class Invoice : CompanyEntity
 {
     public int? Folio { get; set; }
@@ -119,26 +119,26 @@ public class Invoice : CompanyEntity
     public decimal Total { get; set; }
     public string? Notes { get; set; }
     public List<InvoiceLine> Lines { get; set; } = [];
-    // CFDI: se llenan al timbrar.
+    // CFDI: filled in when stamping.
     public string? PaymentMethod { get; set; }
     public string? PaymentForm { get; set; }
     public Guid? Uuid { get; set; }
     public DateTime? StampedAt { get; set; }
     public string? Xml { get; set; }
     public string? CancelReason { get; set; }
-    // Sustitución (motivo 01): el borrador nuevo apunta a la factura que reemplaza; la cancelada guarda el UUID que la sustituye.
+    // Substitution (reason 01): the new draft points to the invoice it replaces; the cancelled one stores the UUID that replaces it.
     public Guid? ReplacesId { get; set; }
     public Guid? SubstitutedBy { get; set; }
-    /// Suma de abonos. Saldo = Total − Paid; llega a "pagada" cuando el saldo es cero.
+    /// Sum of payments. Balance = Total − Paid; it becomes "paid" when the balance is zero.
     public decimal Paid { get; set; }
-    /// Suma de notas de crédito. Saldo = Total − Paid − Credited.
+    /// Sum of credit notes. Balance = Total − Paid − Credited.
     public decimal Credited { get; set; }
     /// Retenciones del cliente persona moral (ISR e IVA). Total = Subtotal + Tax − retenciones.
     public decimal IsrWithheld { get; set; }
     public decimal IvaWithheld { get; set; }
 }
 
-/// Nota de crédito (CFDI de egreso) por devolución o descuento sobre una factura emitida; reduce su saldo.
+/// Credit note (CFDI of type egreso, i.e. outgoing) for a return or discount on an issued invoice; it reduces its balance.
 public class CreditNote : CompanyEntity
 {
     public static readonly string[] Kinds = ["devolucion", "descuento"];
@@ -155,7 +155,7 @@ public class CreditNote : CompanyEntity
     public string? Xml { get; set; }
 }
 
-/// Abono a una factura. En una factura PPD timbrada lleva su recibo electrónico de pago (CFDI tipo P): Folio, Uuid y Xml.
+/// Payment toward an invoice. On a stamped PPD invoice it carries its electronic payment receipt (CFDI type P): Folio, Uuid and Xml.
 public class PaymentReceipt : CompanyEntity
 {
     public Guid InvoiceId { get; set; }
@@ -180,7 +180,7 @@ public class InvoiceLine : CompanyEntity
     public decimal TaxRate { get; set; }
 }
 
-/// Folios consecutivos por empresa y tipo de documento (DESIGN.md §9). Se incrementa solo en servidor.
+/// Consecutive folios (document numbers) per company and document type (DESIGN.md §9). Incremented only on the server.
 public class FolioSequence : CompanyEntity
 {
     public required string Kind { get; set; }
@@ -205,7 +205,7 @@ public class Supplier : CompanyEntity
     public bool Active { get; set; } = true;
 }
 
-/// Orden de compra: borrador → enviada (folio) → recibida (entra al inventario) → pagada. Se cancela antes de recibirse.
+/// Purchase order: draft → sent (folio) → received (enters inventory) → paid. It can be cancelled before it is received.
 public class PurchaseOrder : CompanyEntity
 {
     public int? Folio { get; set; }
@@ -217,7 +217,7 @@ public class PurchaseOrder : CompanyEntity
     public decimal Subtotal { get; set; }
     public decimal Tax { get; set; }
     public decimal Total { get; set; }
-    /// Suma de abonos al proveedor; llega a "pagada" cuando cubre el total.
+    /// Sum of payments to the supplier; it becomes "paid" when it covers the total.
     public decimal Paid { get; set; }
     public string? Notes { get; set; }
     public List<PurchaseLine> Lines { get; set; } = [];
@@ -233,7 +233,7 @@ public class PurchaseLine : CompanyEntity
     public decimal TaxRate { get; set; }
 }
 
-/// Borrador propuesto por Apolo IA. El agente nunca escribe directo: nada existe hasta que una persona lo aprueba (DESIGN.md §4).
+/// Draft proposed by Apolo IA. The agent never writes directly: nothing exists until a person approves it (DESIGN.md §4).
 public class AgentAction : CompanyEntity
 {
     public static readonly string[] Kinds = ["factura", "orden_compra"];
@@ -248,12 +248,12 @@ public class AgentAction : CompanyEntity
     public string? Error { get; set; }
 }
 
-/// Una consulta a Apolo IA: tokens, costo y herramientas usadas. No guarda la pregunta, la respuesta ni los argumentos de las herramientas.
+/// One query to Apolo IA: tokens, cost and tools used. It does not store the question, the answer or the tool arguments.
 public class AgentUsage : CompanyEntity
 {
     public required string RequestId { get; set; }
     public required string Model { get; set; }
-    /// ok, refusal, max_rounds, limit o error (también si la consulta se interrumpe por una excepción).
+    /// ok, refusal, max_rounds, limit or error (also if the query is interrupted by an exception).
     public string Outcome { get; set; } = "error";
     public int Rounds { get; set; }
     public long InputTokens { get; set; }
@@ -285,7 +285,7 @@ public class ProjectTask : CompanyEntity
     public Guid? AssigneeId { get; set; }
 }
 
-/// Cuenta del catálogo contable. La naturaleza (deudora/acreedora) sale del tipo.
+/// Account in the chart of accounts. The nature (debit/credit) comes from the type.
 public class Account : CompanyEntity
 {
     public static readonly string[] Types = ["activo", "pasivo", "capital", "ingreso", "gasto"];
@@ -294,11 +294,11 @@ public class Account : CompanyEntity
     public required string Name { get; set; }
     public required string Type { get; set; }
     public bool Active { get; set; } = true;
-    /// Código agrupador del SAT para la contabilidad electrónica (p. ej. 102.01).
+    /// SAT grouping code for electronic accounting (e.g. 102.01).
     public string? SatCode { get; set; }
 }
 
-/// Póliza. Inmutable: una corrección es otra póliza que la revierte (ReversalOf).
+/// Journal entry. Immutable: a correction is another entry that reverses it (ReversalOf).
 public class JournalEntry : CompanyEntity
 {
     public static readonly string[] Kinds = ["diario", "ingreso", "egreso"];
@@ -329,23 +329,23 @@ public class Employee : CompanyEntity
     public string? Position { get; set; }
     public string? Department { get; set; }
     public DateOnly? HireDate { get; set; }
-    /// Fecha de baja: se fija al pagar su finiquito. Con ella el empleado sigue contando para la PTU del año que trabajó.
+    /// Termination date: set when the severance is paid. With it the employee still counts for the PTU of the year they worked.
     public DateOnly? TerminationDate { get; set; }
     public decimal DailySalary { get; set; }
     public bool Active { get; set; } = true;
 }
 
-/// Nómina: sueldo diario × días más horas extra, menos ISR (con subsidio), cuotas obreras IMSS y otras deducciones (Nomina.cs).
-/// Kind: ordinaria, aguinaldo o ptu. Las extraordinarias no causan cuotas IMSS (el aguinaldo ya integra el SBC; la PTU no lo integra).
+/// Payroll: daily wage × days plus overtime, minus ISR (with subsidy), IMSS employee contributions and other deductions (Nomina.cs).
+/// Kind: ordinary, aguinaldo (year-end bonus) or ptu (profit sharing). Extraordinary runs do not accrue IMSS contributions (the aguinaldo already includes the SBC; the PTU does not).
 public class PayrollRun : CompanyEntity
 {
     public static readonly string[] Kinds = ["ordinaria", "aguinaldo", "ptu", "finiquito"];
 
     public int? Folio { get; set; }
     public string Kind { get; set; } = "ordinaria";
-    /// Finiquito: "renuncia" (o terminación voluntaria) o "despido" (liquidación por despido injustificado).
+    /// Severance (finiquito): "renuncia" (resignation or voluntary termination) or "despido" (settlement for unjustified dismissal).
     public string? Cause { get; set; }
-    /// Cuotas patronales IMSS, RCV e INFONAVIT del periodo: costo de la empresa, no se descuentan al empleado.
+    /// Employer IMSS, RCV and INFONAVIT contributions for the period: a cost to the company, not deducted from the employee.
     public decimal EmployerCost { get; set; }
     public DateOnly StartDate { get; set; }
     public DateOnly EndDate { get; set; }
@@ -366,15 +366,15 @@ public class PayrollLine : CompanyEntity
     public decimal Sbc { get; set; }
     public decimal DoubleHours { get; set; }
     public decimal TripleHours { get; set; }
-    /// Ordinaria: días de vacaciones gozados (pagan prima vacacional). Finiquito: días de vacaciones pendientes de años anteriores.
+    /// Ordinary: vacation days taken (they earn a vacation premium). Severance: pending vacation days from previous years.
     public decimal VacationDays { get; set; }
     public decimal VacationPremium { get; set; }
-    /// Faltas e incapacidades: no se pagan ni cotizan.
+    /// Absences and sick leave: not paid and no contributions.
     public decimal Absences { get; set; }
     public decimal SickDays { get; set; }
-    /// Diferencia del cálculo anual: positiva se retiene, negativa se devuelve.
+    /// Difference from the annual calculation: positive is withheld, negative is refunded.
     public decimal IsrAdjustment { get; set; }
-    /// Finiquito: conceptos con importe y exento (Nomina.Concept en JSON).
+    /// Severance: concepts with amount and exempt portion (Nomina.Concept as JSON).
     public string? Concepts { get; set; }
     public decimal Overtime { get; set; }
     /// Parte exenta de ISR: horas extra, aguinaldo o PTU.
@@ -389,7 +389,7 @@ public class PayrollLine : CompanyEntity
     public decimal Net { get; set; }
 }
 
-/// Tarea en segundo plano (DESIGN.md §4): el avance se guarda aquí y la interfaz lo consulta.
+/// Background task (DESIGN.md §4): progress is stored here and the interface polls it.
 public class BackgroundJob : CompanyEntity
 {
     public static readonly string[] Kinds = ["reporte", "conciliacion"];
@@ -405,7 +405,7 @@ public class BackgroundJob : CompanyEntity
     public DateTime? FinishedAt { get; set; }
 }
 
-/// Movimiento del estado de cuenta bancario importado. Amount: depósito +, retiro −.
+/// Movement from the imported bank statement. Amount: deposit +, withdrawal −.
 public class BankTransaction : CompanyEntity
 {
     public DateOnly Date { get; set; }

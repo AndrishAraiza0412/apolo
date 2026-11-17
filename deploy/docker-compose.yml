@@ -1,5 +1,5 @@
-# Producción: Postgres + Apolo + Caddy (HTTPS automático con Let's Encrypt) + respaldo diario.
-# Uso: cp .env.example .env, edita los valores y ejecuta `docker compose up -d --build` en esta carpeta.
+# Production: Postgres + Apolo + Caddy (automatic HTTPS with Let's Encrypt) + daily backup.
+# Usage: cp .env.example .env, edit the values and run `docker compose up -d --build` in this folder.
 services:
   db:
     image: postgres:17
@@ -14,7 +14,7 @@ services:
       test: ["CMD-SHELL", "pg_isready -U apolo -d apolo"]
       interval: 10s
       retries: 5
-    # Sin puerto publicado: solo la API llega a la base.
+    # No published port: only the API reaches the database.
 
   api:
     build: ..

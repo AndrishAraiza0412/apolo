@@ -102,7 +102,7 @@ public class CfdiTests
         var doc = x.Descendants(P + "DoctoRelacionado").Single();
         Assert.Equal((inv.Uuid.ToString()!.ToUpperInvariant(), "616.00", "0.00"),
             (doc.Attribute("IdDocumento")!.Value, doc.Attribute("ImpPagado")!.Value, doc.Attribute("ImpSaldoInsoluto")!.Value));
-        // Un solo Complemento con el pago y el timbre.
+        // A single Complemento with the payment and the stamp.
         Assert.Single(x.Elements(C + "Complemento"));
         Assert.Single(x.Descendants(Tfd + "TimbreFiscalDigital"));
     }
@@ -112,11 +112,11 @@ public class CfdiTests
     {
         var inv = await Draft(new Customer { Name = "Cliente Uno", Rfc = "CUN120315AB1", TaxRegime = "601", ZipCode = "76000", CreditDays = 30 });
         Assert.Null(await Facturacion.EmitAsync(db, inv.Id));
-        Assert.NotNull(await Facturacion.PayAsync(db, inv.Id, null, 700)); // más que el saldo
+        Assert.NotNull(await Facturacion.PayAsync(db, inv.Id, null, 700)); // more than the balance
         Assert.Null(await Facturacion.PayAsync(db, inv.Id, null, 308));
         Assert.Equal(("emitida", 308m), (inv.Status, inv.Paid));
-        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "02")); // con abonos ya no se cancela
-        Assert.Null(await Facturacion.PayAsync(db, inv.Id));               // sin monto: liquida el saldo
+        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "02")); // with payments it can no longer be cancelled
+        Assert.Null(await Facturacion.PayAsync(db, inv.Id));               // no amount: settles the balance
         Assert.Equal(("pagada", 616m), (inv.Status, inv.Paid));
 
         var receipts = await db.PaymentReceipts.OrderBy(r => r.Installment).ToListAsync();
@@ -124,7 +124,7 @@ public class CfdiTests
         var doc = XDocument.Parse(receipts[1].Xml!).Root!.Descendants(P + "DoctoRelacionado").Single();
         Assert.Equal(("2", "308.00", "308.00", "0.00"), (doc.Attribute("NumParcialidad")!.Value, doc.Attribute("ImpSaldoAnt")!.Value,
             doc.Attribute("ImpPagado")!.Value, doc.Attribute("ImpSaldoInsoluto")!.Value));
-        // Impuestos proporcionales: la mitad del total paga la mitad de cada base.
+        // Proportional taxes: half of the total pays half of each base.
         var totals = XDocument.Parse(receipts[0].Xml!).Root!.Descendants(P + "Totales").Single();
         Assert.Equal(("308.00", "50.00", "8.00", "250.00"), (totals.Attribute("MontoTotalPagos")!.Value,
             totals.Attribute("TotalTrasladosBaseIVA16")!.Value, totals.Attribute("TotalTrasladosImpuestoIVA16")!.Value, totals.Attribute("TotalTrasladosBaseIVA0")!.Value));
@@ -136,7 +136,7 @@ public class CfdiTests
     {
         var inv = await Draft(new Customer { Name = "Cliente Uno", Rfc = "CUN120315AB1", TaxRegime = "601", ZipCode = "76000", CreditDays = 30 });
         Assert.Null(await Facturacion.EmitAsync(db, inv.Id));
-        Assert.NotNull((await Facturacion.CreditAsync(db, inv.Id, 700, "descuento", "Pronto pago")).Error); // más que el saldo
+        Assert.NotNull((await Facturacion.CreditAsync(db, inv.Id, 700, "descuento", "Pronto pago")).Error); // more than the balance
         Assert.Null((await Facturacion.CreditAsync(db, inv.Id, 308, "descuento", "Pronto pago")).Error);
 
         var n = await db.CreditNotes.SingleAsync();
@@ -145,7 +145,7 @@ public class CfdiTests
         Assert.Equal(("E", "308.00", "G02", "01", inv.Uuid.ToString()!.ToUpperInvariant()),
             (x.Attribute("TipoDeComprobante")!.Value, x.Attribute("Total")!.Value, x.Element(C + "Receptor")!.Attribute("UsoCFDI")!.Value,
              x.Element(C + "CfdiRelacionados")!.Attribute("TipoRelacion")!.Value, x.Element(C + "CfdiRelacionados")!.Element(C + "CfdiRelacionado")!.Attribute("UUID")!.Value));
-        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "02"));                 // con nota ya no se cancela
+        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "02"));                 // with a credit note it can no longer be cancelled
 
         Assert.Null(await Facturacion.PayAsync(db, inv.Id));                              // cobra el resto
         Assert.Equal("pagada", inv.Status);
@@ -160,18 +160,18 @@ public class CfdiTests
         Assert.Null(await Facturacion.EmitAsync(db, inv.Id));
         var productId = inv.Lines[0].ProductId!.Value;
         Assert.Equal(7, await Inventario.Stock(db, productId));
-        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "01")); // 01 solo por sustitución
+        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "01")); // 01 only by substitution
 
         var (newId, error) = await Facturacion.SubstituteAsync(db, inv.Id);
         Assert.Null(error);
-        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "02")); // hay un borrador que la sustituye
+        Assert.NotNull(await Facturacion.CancelAsync(db, inv.Id, "02")); // there is a draft that replaces it
         Assert.Null(await Facturacion.EmitAsync(db, newId!.Value));
 
         var fresh = await db.Invoices.SingleAsync(i => i.Id == newId);
         Assert.Equal(("cancelada", "01", fresh.Uuid), (inv.Status, inv.CancelReason, inv.SubstitutedBy));
         var rel = XDocument.Parse(fresh.Xml!).Root!.Element(C + "CfdiRelacionados")!;
         Assert.Equal(("04", inv.Uuid.ToString()!.ToUpperInvariant()), (rel.Attribute("TipoRelacion")!.Value, rel.Element(C + "CfdiRelacionado")!.Attribute("UUID")!.Value));
-        Assert.Equal(7, await Inventario.Stock(db, productId)); // regresó y volvió a salir
+        Assert.Equal(7, await Inventario.Stock(db, productId)); // it went back and came out again
     }
 
     [Fact]

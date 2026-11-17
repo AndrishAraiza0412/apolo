@@ -103,7 +103,7 @@ function InvoiceEditor({ id, catalog, money, onClose, onChanged, onRefresh }: {
   const [crediting, setCrediting] = useState(false)
   const [printing, setPrinting] = useState(false)
   const sat = useSat()
-  // Una factura nueva se guarda antes de emitir; si la emisión falla, el siguiente intento edita ese borrador.
+  // A new invoice is saved before issuing; if issuing fails, the next attempt edits that draft.
   const [savedId, setSavedId] = useState(id)
 
   useEffect(() => {
@@ -342,7 +342,7 @@ type Printable = {
   lines: { description: string; quantity: number; unitPrice: number; taxRate: number; amount: number }[]
 }
 
-// Representación impresa: se abre el diálogo de impresión (o "Guardar como PDF") y se cierra al terminar.
+// Printed representation: the print dialog (or "Save as PDF") opens and closes when finished.
 function PrintSheet({ id, money, onDone }: { id: string; money: Intl.NumberFormat; onDone: () => void }) {
   const [p, setP] = useState<Printable | null>(null)
   useEffect(() => { api<Printable>(`/invoices/${id}/print`).then(setP) }, [id])
@@ -391,7 +391,7 @@ function PrintSheet({ id, money, onDone }: { id: string; money: Intl.NumberForma
   )
 }
 
-// Retenciones del cliente persona moral a una persona física (ISR e IVA); ya vienen restadas del total.
+// Withholdings from a legal-entity customer to an individual (ISR and VAT); they are already subtracted from the total.
 function Withheld({ p, money }: { p?: { isrWithheld: number; ivaWithheld: number } | null; money: Intl.NumberFormat }) {
   if (!p || p.isrWithheld + p.ivaWithheld === 0) return null
   return <><dt>ISR retenido</dt><dd>−{money.format(p.isrWithheld)}</dd><dt>IVA retenido</dt><dd>−{money.format(p.ivaWithheld)}</dd></>

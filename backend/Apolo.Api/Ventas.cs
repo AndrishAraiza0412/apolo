@@ -21,7 +21,7 @@ public static class Ventas
         return e;
     }
 
-    /// Los datos fiscales son opcionales al capturar; si vienen, deben ser válidos. Se exigen completos al timbrar.
+    /// Tax data is optional when entering; if provided, it must be valid. It is required in full when stamping.
     static Dictionary<string, string[]> ValidateCustomer(CustomerRequest r)
     {
         var e = ValidateContact(r.Name, r.Rfc, r.CreditDays);
@@ -31,7 +31,7 @@ public static class Ventas
         return e;
     }
 
-    /// Cliente y responsable se buscan con el filtro de empresa: un id de otra empresa no existe aquí.
+    /// Customer and owner are looked up with the company filter: an id from another company does not exist here.
     public static async Task<Dictionary<string, string[]>> ValidateAsync(AppDb db, OpportunityRequest r)
     {
         var e = new Dictionary<string, string[]>();
@@ -133,7 +133,7 @@ public static class Ventas
             return Results.NoContent();
         });
 
-        // Para el selector de responsable; solo nombres de la propia empresa.
+        // For the owner selector; only names from the company itself.
         app.MapGet("/api/sellers", (AppDb db) =>
             db.Users.Where(u => u.Active).OrderBy(u => u.Name).Select(u => new { u.Id, u.Name }).ToListAsync())
             .RequireAuthorization("ventas");

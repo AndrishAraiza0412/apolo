@@ -207,7 +207,7 @@ function Donut({ parts, money }: { parts: { label: string; value: number; cls: s
   )
 }
 
-// Línea de 2px que se dibuja al cargar (1.6 s, DESIGN.md §6); la proyección sigue punteada desde el último mes real.
+// 2px line drawn on load (1.6 s, DESIGN.md §6); the projection stays dotted from the last real month.
 function CashLine({ history, forecast, money, compact }: {
   history: { month: string; balance: number }[]; forecast: { month: string; balance: number }[]; money: Intl.NumberFormat; compact: Intl.NumberFormat
 }) {

@@ -8,17 +8,17 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
-// Producción: logs en JSON para enviarlos a un colector (A.8.15). No se registran cuerpos de petición ni contraseñas.
-if (!builder.Environment.IsDevelopment()) builder.Logging.AddJsonConsole(o => o.IncludeScopes = true); // los scopes traen el RequestId de cada línea
+// Production: JSON logs to send to a collector (A.8.15). Request bodies and passwords are not logged.
+if (!builder.Environment.IsDevelopment()) builder.Logging.AddJsonConsole(o => o.IncludeScopes = true); // the scopes carry the RequestId of each line
 
 builder.Services.AddHttpContextAccessor();
 builder.Services.AddScoped<CurrentUser>();
 builder.Services.AddHostedService<Tareas.Worker>();
 builder.Services.AddDbContext<AppDb>(o => o.UseNpgsql(builder.Configuration.GetConnectionString("Default")));
-// Las llaves que cifran la cookie de sesión sobreviven reinicios y nuevas versiones del contenedor.
+// The keys that encrypt the session cookie survive restarts and new container versions.
 if (builder.Configuration["DataProtection:Path"] is { Length: > 0 } keys)
     builder.Services.AddDataProtection().PersistKeysToFileSystem(new DirectoryInfo(keys)).SetApplicationName("apolo");
-// Detrás del proxy con TLS (Caddy): esquema e IP real del cliente para cookies seguras y el límite de intentos.
+// Behind the TLS proxy (Caddy): scheme and real client IP for secure cookies and the attempt limit.
 builder.Services.Configure<ForwardedHeadersOptions>(o =>
 {
     o.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
@@ -35,12 +35,12 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         o.Cookie.SecurePolicy = builder.Environment.IsDevelopment() ? CookieSecurePolicy.SameAsRequest : CookieSecurePolicy.Always;
         o.ExpireTimeSpan = TimeSpan.FromHours(8);
         o.SlidingExpiration = true;
-        // Es una API: 401/403 en lugar de redirigir a una página de login.
+        // It is an API: 401/403 instead of redirecting to a login page.
         o.Events.OnRedirectToLogin = c => { c.Response.StatusCode = 401; return Task.CompletedTask; };
         o.Events.OnRedirectToAccessDenied = c => { c.Response.StatusCode = 403; return Task.CompletedTask; };
-        // Revocación: cada petición confirma que el usuario sigue activo y con la misma contraseña y permisos.
-        // Ámbito propio para no fijar un CurrentUser vacío en el ámbito de la petición.
-        // una consulta por petición; con mucho tráfico, revalidar cada pocos minutos.
+        // Revocation: each request confirms the user is still active and has the same password and permissions.
+        // Own scope so an empty CurrentUser is not set in the request scope.
+        // one query per request; with heavy traffic, revalidate every few minutes.
         o.Events.OnValidatePrincipal = async c =>
         {
             using var scope = c.HttpContext.RequestServices.CreateScope();
@@ -55,7 +55,7 @@ builder.Services.AddAuthentication(CookieAuthenticationDefaults.AuthenticationSc
         };
     });
 
-// Una política por módulo; los permisos se aplican aquí, el menú solo los refleja (DESIGN.md §2).
+// One policy per module; permissions are enforced here, the menu only reflects them (DESIGN.md §2).
 builder.Services.AddAuthorization(o =>
 {
     foreach (var m in Modules.All) o.AddPolicy(m.Code, p => p.RequireClaim(Modules.ClaimType, m.Code));
@@ -64,7 +64,7 @@ builder.Services.AddAuthorization(o =>
 builder.Services.AddRateLimiter(o =>
 {
     o.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
-    // Límite general por usuario (o IP sin sesión) contra abuso y extracción masiva.
+    // General limit per user (or per IP without a session) against abuse and bulk extraction.
     o.GlobalLimiter = PartitionedRateLimiter.Create<HttpContext, string>(c => RateLimitPartition.GetFixedWindowLimiter(
         c.User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? c.Connection.RemoteIpAddress?.ToString() ?? "",
         _ => new FixedWindowRateLimiterOptions { PermitLimit = 600, Window = TimeSpan.FromMinutes(1) }));
@@ -80,8 +80,8 @@ builder.Services.AddProblemDetails(o => o.CustomizeProblemDetails = c =>
 
 var app = builder.Build();
 
-// Migraciones al arrancar (una sola instancia). Los datos demo y el acceso admin/admin solo existen en desarrollo;
-// en producción la primera empresa se da de alta con /api/setup.
+// Migrations on startup (single instance). The demo data and the admin/admin access exist only in development;
+// in production the first company is created with /api/setup.
 using (var scope = app.Services.CreateScope())
 {
     var db = scope.ServiceProvider.GetRequiredService<AppDb>();
@@ -90,7 +90,7 @@ using (var scope = app.Services.CreateScope())
 }
 
 app.UseForwardedHeaders();
-// Encabezados de seguridad. La CSP permite el script de tema de index.html por su hash y las fuentes de Google.
+// Security headers. The CSP allows the theme script in index.html by its hash and Google fonts.
 var csp = $"default-src 'self'; script-src 'self' {Security.InlineScriptHashes(app.Environment.WebRootPath)}; " +
     "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com; img-src 'self' data:; " +
     "connect-src 'self'; frame-ancestors 'none'; base-uri 'self'; form-action 'self'; object-src 'none'";
@@ -113,7 +113,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 app.UseRateLimiter();
 
-// Monitoreo de disponibilidad (SOC 2 A1): responde 200 si la API llega a la base.
+// Availability monitoring (SOC 2 A1): returns 200 if the API reaches the database.
 app.MapGet("/healthz", async (AppDb db) => await db.Database.CanConnectAsync() ? Results.Text("ok") : Results.StatusCode(503)).DisableRateLimiting();
 app.MapAuth();
 app.MapConfiguracion();
@@ -133,7 +133,7 @@ app.MapBancos();
 app.MapImpuestos();
 app.MapDashboard();
 
-// En producción la misma API sirve la interfaz compilada (wwwroot); cualquier ruta que no sea /api cae en index.html.
+// In production the same API serves the built interface (wwwroot); any route that is not /api falls back to index.html.
 app.UseDefaultFiles();
 app.UseStaticFiles();
 app.MapFallbackToFile("{*path:regex(^(?!api/).*$)}", "index.html");

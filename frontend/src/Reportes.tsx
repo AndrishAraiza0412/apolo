@@ -30,7 +30,7 @@ export default function Reportes({ currency }: { currency: string }) {
   const fmt = (c: Column, v: string | number | null) => v === null ? '' : c.type === 'money' ? money.format(Number(v)) : c.type === 'number' ? num.format(Number(v)) : String(v)
   const totals = table && table.rows.length > 1 && table.columns.some(c => c.type === 'money') && code !== 'estado-resultados'
 
-  // Para periodos largos: el reporte se genera en segundo plano y se descarga cuando termina.
+  // For long periods: the report is generated in the background and downloaded when it finishes.
   async function background() {
     setError('')
     try { await api('/jobs', { method: 'POST', body: { kind: 'reporte', report: code, from: range.from, to: range.to } }); setJobs(n => n + 1) }

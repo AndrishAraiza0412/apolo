@@ -38,6 +38,6 @@ jobs:
         run: npm run build
         working-directory: frontend
 
-      # Pruebas .NET, paquetes vulnerables, npm audit y búsqueda de secretos.
+      # .NET tests, vulnerable packages, npm audit and secret scanning.
       - name: Revisión de seguridad y pruebas
         run: bash scripts/security-check.sh

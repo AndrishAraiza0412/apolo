@@ -104,7 +104,7 @@ function OrderEditor({ id, catalog, money, onClose, onChanged, onRefresh }: {
   const [error, setError] = useState('')
   const [busy, setBusy] = useState('')
   const [amount, setAmount] = useState('')
-  // Igual que en Facturación: si el envío falla, el siguiente intento edita el borrador ya guardado.
+  // Same as in Invoicing: if sending fails, the next attempt edits the draft that was already saved.
   const [savedId, setSavedId] = useState(id)
 
   useEffect(() => {
@@ -118,7 +118,7 @@ function OrderEditor({ id, catalog, money, onClose, onChanged, onRefresh }: {
   const set = (i: number, patch: Partial<Line>) => setLines(ls => ls.map((l, j) => (j === i ? { ...l, ...patch } : l)))
   const newLine = (p = catalog.products[0], quantity = 1): Line => ({ productId: p?.id ?? '', quantity, unitCost: p?.cost ?? 0, taxRate: 0.16 })
 
-  // Con el pronóstico de demanda: lo que llega al mínimo en 14 días o menos, pidiendo para cubrir 30 días más el mínimo.
+  // With the demand forecast: what reaches the minimum in 14 days or less, ordering enough to cover 30 more days plus the minimum.
   async function suggest() {
     setError('')
     try {

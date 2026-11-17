@@ -30,7 +30,7 @@ public class ObligacionesTests
         var due = (await Impuestos.ObligationsAsync(db, day)).ToDictionary(o => o.Kind, o => o.Due);
         Assert.Equal((200m, 0m, 80m), (due["retenciones"], due["cuotas"], due["iva"]));
 
-        Assert.NotNull(await Impuestos.PayAsync(db, companyId, "retenciones", new(day, 250)));   // más que el saldo
+        Assert.NotNull(await Impuestos.PayAsync(db, companyId, "retenciones", new(day, 250)));   // more than the balance
         Assert.Null(await Impuestos.PayAsync(db, companyId, "retenciones", new(day, 150)));
         Assert.Null(await Impuestos.PayAsync(db, companyId, "iva", new(day)));
         Assert.NotNull(await Impuestos.PayAsync(db, companyId, "cuotas", new(day)));              // sin saldo
@@ -53,6 +53,6 @@ public class ObligacionesTests
         Assert.Equal(("recibida", 500m), (po.Status, po.Paid));
         Assert.Null(await Compras.PayAsync(db, po.Id));
         Assert.Equal(("pagada", 1_160m), (po.Status, po.Paid));
-        Assert.Equal(1_160m, -await Closing(Contabilidad.Proveedores));   // dos abonos que suman el total, como cargos a proveedores
+        Assert.Equal(1_160m, -await Closing(Contabilidad.Proveedores));   // two payments that add up to the total, as charges to suppliers
     }
 }

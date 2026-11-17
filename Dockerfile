@@ -1,4 +1,4 @@
-# Imagen única: la API sirve también la interfaz compilada.
+# Single image: the API also serves the built interface.
 FROM node:24-alpine AS web
 WORKDIR /web
 COPY frontend/package*.json ./
@@ -18,8 +18,8 @@ WORKDIR /app
 COPY --from=api /app ./
 COPY --from=web /web/dist ./wwwroot
 ENV ASPNETCORE_ENVIRONMENT=Production ASPNETCORE_HTTP_PORTS=8080 DataProtection__Path=/keys
-# Usuario sin privilegios (incluido en la imagen de .NET); el volumen de llaves hereda el dueño de /keys.
-# libgssapi: Npgsql la busca al conectar; sin ella deja un error en el log.
+# Unprivileged user (included in the .NET image); the keys volume inherits the owner of /keys.
+# libgssapi: Npgsql looks for it when connecting; without it, it leaves an error in the log.
 RUN apt-get update && apt-get install -y --no-install-recommends libgssapi-krb5-2 && rm -rf /var/lib/apt/lists/* \
     && mkdir /keys && chown app /keys
 USER app

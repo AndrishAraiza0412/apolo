@@ -1,3 +1,4 @@
+// Typed fetch wrapper for the /api backend: JSON in and out; failures become an ApiError carrying the server's validation messages.
 export type Module = { code: string; name: string; group: string }
 export type Me = {
   id: string
